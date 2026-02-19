@@ -56,13 +56,19 @@ int main(int argc, char *argv[])
     MapBridge mapBridge;
     ApiHandler apiHandler;
 
-    // [핵심] API에서 데이터를 받으면 MapBridge의 신호를 발생시켜 지도를 업데이트함
+    // API에서 데이터를 받으면 MapBridge의 신호를 발생시켜 지도를 업데이트함
     QObject::connect(&mapBridge, SIGNAL(requestStartSimulation()),
                      &apiHandler, SLOT(startServerSimulation()));
     QObject::connect(&mapBridge, SIGNAL(requestResetSimulation()),
                      &apiHandler, SLOT(resetServerSimulationData()));
+    QObject::connect(&mapBridge, SIGNAL(requestGenerateHeatmapData()),
+                     &apiHandler, SLOT(requestGenerateHeatmapData()));
+    QObject::connect(&mapBridge, SIGNAL(requestHeatmapData()),
+                     &apiHandler, SLOT(requestHeatmapData()));
     QObject::connect(&apiHandler, &ApiHandler::droneDataReceived,
                      &mapBridge, &MapBridge::updateMarker);
+    QObject::connect(&apiHandler, &ApiHandler::heatmapDataFetched,
+                     &mapBridge, &MapBridge::heatmapDataReady);
 
     //QML 컨텍스트에 등록
     engine.rootContext()->setContextProperty("applicationDirPath", QCoreApplication::applicationDirPath());

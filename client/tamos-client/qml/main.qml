@@ -19,6 +19,11 @@ ApplicationWindow {
             // runJavaScript는 웹페이지 내부 함수를 실행하는 열쇠입니다.
             mapContainer.runJavaScript("mapManager.updateMarker('" + id + "', " + lat + ", " + lng + ", '" + type + "');");
         }
+
+        function onHeatmapDataReady(jsonData) {
+            var jsCommand = "mapManager.drawHeatmap(`" + jsonData + "`);"
+            mapContainer.runJavaScript(jsCommand)
+        }
     }
 
     ColumnLayout {
@@ -85,6 +90,29 @@ ApplicationWindow {
                     text: "KakaoMap"
                     onClicked: {
                         mapContainer.runJavaScript("mapManager.switchEngine('kakao');")
+                    }
+                }
+
+                Button {
+                    text: "히트맵 데이터 생성"
+                    onClicked: {
+                        mapBridge.generateHeatmap()
+                    }
+                }
+
+                Button {
+                    property bool onHeatmap: false
+
+                    text: "히트맵 표출"
+                    onClicked: {
+                        if(onHeatmap) {
+                            var jsCommand = "mapManager.clearHeatmap();"
+                            mapContainer.runJavaScript(jsCommand)
+                            onHeatmap = false
+                        } else {
+                            mapBridge.drawHeatmap()
+                            onHeatmap = true
+                        }
                     }
                 }
             }

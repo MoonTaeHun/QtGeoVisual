@@ -103,4 +103,57 @@ class MapboxAdapter extends MapAdapter {
             });
         }
     }
+
+    drawHeatmap(dataArray) {
+        if (!this.map || !this.map.isStyleLoaded()) return;
+
+        // 1. 서버에서 온 [{lat: 37.x, lng: 126.x, weight: 50}] 포맷을 GeoJSON으로 변환
+        const features = dataArray.map(point => ({
+            'type': 'Feature',
+            'properties': { 'weight': point.weight },
+            'geometry': {
+                'type': 'Point',
+                'coordinates': [point.lng, point.lat] // Mapbox는 [경도, 위도]
+            }
+        }));
+
+        const geojsonData = { 'type': 'FeatureCollection', 'features': features };
+        const sourceId = 'heatmap-source';
+
+        // 2. 지도에 소스 추가 (이미 있으면 데이터만 교체)
+        if (this.map.getSource(sourceId)) {
+            this.map.getSource(sourceId).setData(geojsonData);
+        } else {
+            this.map.addSource(sourceId, { 'type': 'geojson', 'data': geojsonData });
+
+            // 3. 히트맵 레이어 추가
+            this.map.addLayer({
+                'id': 'heatmap-layer',
+                'type': 'heatmap',
+                'source': sourceId,
+                'paint': {
+                    // weight(0~100) 값에 따라 열기의 강도를 결정
+                    'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 0, 0, 100, 1],
+                    // 파랑 -> 노랑 -> 빨강 그라데이션
+                    'heatmap-color': [
+                        'interpolate', ['linear'], ['heatmap-density'],
+                        0, 'rgba(33,102,172,0)',
+                        0.2, 'rgb(103,169,207)',
+                        0.5, 'rgb(253,219,199)',
+                        0.8, 'rgb(239,138,98)',
+                        1, 'rgb(178,24,43)'
+                    ],
+                    // 점 하나의 퍼짐 정도 (픽셀)
+                    'heatmap-radius': 15,
+                    'heatmap-opacity': 0.8
+                }
+            });
+        }
+    }
+
+    clearHeatmap() {
+        if (!this.map) return;
+        if (this.map.getLayer('heatmap-layer')) this.map.removeLayer('heatmap-layer');
+        if (this.map.getSource('heatmap-source')) this.map.removeSource('heatmap-source');
+    }
 }

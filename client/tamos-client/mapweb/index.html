@@ -6,7 +6,7 @@
     <meta name="referrer" content="no-referrer">
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css" rel="stylesheet">
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js"></script>
-    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=30fb0eda4415c52ecd7b2f2d059f067e"></script>
+    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=30fb0eda4415c52ecd7b2f2d059f067e&autoload=false"></script>
     <script src="js/MapAdapter.js"></script>
     <script src="js/MapboxAdapter.js"></script>
     <script src="js/KakaoAdapter.js"></script>
@@ -93,6 +93,22 @@
                 currentAdapter.updateMarker(id, lat, lng);
                 // 궤적(선) 그리기 (★이동할 때마다 선을 긋기 위해 추가)
                 currentAdapter.addPathPoint(id, lat, lng);
+            },
+            drawHeatmap: function(dataJsonString) {
+                if (currentAdapter instanceof MapboxAdapter) {
+                    // Qt C++에서 넘어온 JSON 문자열을 파싱
+                    try {
+                        const dataArray = typeof dataJsonString === 'string' ? JSON.parse(dataJsonString) : dataJsonString;
+                        currentAdapter.drawHeatmap(dataArray);
+                    } catch(e) {
+                        console.error("Heatmap Data Parse Error:", e);
+                    }
+                } else {
+                    console.warn("히트맵은 Mapbox 모드에서만 지원됩니다.");
+                }
+            },
+            clearHeatmap: function() {
+                currentAdapter.clearHeatmap();
             }
         };
 

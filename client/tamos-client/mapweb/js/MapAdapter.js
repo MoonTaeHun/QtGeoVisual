@@ -17,4 +17,8 @@ class MapAdapter {
 
     addPathPoint(id, lat, lng) { throw new Error("Not Implemented"); }
     getPath(id) { return this.paths[id] || []; }
+
+    //히트맵 그리기 인터페이스
+    drawHeatmap(dataArray) { throw new Error("Not Implemented"); }
+    clearHeatmap() { throw new Error("Not Implemented"); }
 }

@@ -26,3 +26,13 @@ void MapBridge::resetSimulation()
 {
     emit requestResetSimulation();
 }
+
+void MapBridge::generateHeatmap()
+{
+    emit requestGenerateHeatmapData();
+}
+
+void MapBridge::drawHeatmap()
+{
+    emit requestHeatmapData();
+}
