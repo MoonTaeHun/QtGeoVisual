@@ -1,0 +1,19 @@
+server:
+  port: 8080 # 서버가 사용할 포트 번호
+
+spring:
+  datasource:
+    # MySQL 접속 주소 (db 이름: tamos_db 등 본인이 만든 이름으로 수정)
+    url: jdbc:mysql://localhost:3306/tamos_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: root # 기본 사용자
+    password: SSSSSggggg77777 # MySQL 설치 시 설정한 비밀번호
+    driver-class-name: com.mysql.cj.jdbc.Driver # MySQL 8.0 드라이버
+
+  jpa:
+    hibernate:
+      # 서버 실행 시 엔티티(Java 객체)를 바탕으로 테이블을 자동으로 업데이트함
+      ddl-auto: update
+    show-sql: true # 실행되는 SQL을 콘솔창에 출력
+    properties:
+      hibernate:
+        format_sql: true # SQL을 보기 좋게 정렬

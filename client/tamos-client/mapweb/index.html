@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>TAMOS Map</title>
+    <meta name="referrer" content="no-referrer">
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js"></script>
+    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=30fb0eda4415c52ecd7b2f2d059f067e"></script>
+    <script src="js/MapAdapter.js"></script>
+    <script src="js/MapboxAdapter.js"></script>
+    <script src="js/KakaoAdapter.js"></script>
+
+    <style>
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; height: 100%; }
+
+        /* [추가] 드론 마커 스타일 (빨간색 원) */
+        .drone-marker {
+            width: 20px;
+            height: 20px;
+            background-color: #ff0000;
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <script>
+        let currentAdapter = new MapboxAdapter();
+
+        const mapManager = {
+            switchEngine: function(engineType) {
+                // ==========================================
+                // 0. [핵심] 현재 보고 있는 위치 저장
+                // ==========================================
+                let lastCenter = { lat: 37.5546, lng: 126.9706 }; // 기본값
+                if (currentAdapter) {
+                    lastCenter = currentAdapter.getCurrentCenter(); // 현재 중심 가져오기
+                }
+
+                // ==========================================
+                // 1. 데이터 백업 (마커 & 궤적)
+                // ==========================================
+
+                // [1-1] 마커 위치 백업
+                const backupMarkers = {};
+                for (let id in currentAdapter.markers) {
+                    const pos = (currentAdapter instanceof MapboxAdapter) ?
+                        currentAdapter.markers[id].getLngLat() :
+                        currentAdapter.markers[id].getPosition();
+
+                    backupMarkers[id] = {
+                        lat: pos.getLat ? pos.getLat() : pos.lat,
+                        lng: pos.getLng ? pos.getLng() : pos.lng
+                    };
+                }
+
+                // [1-2] 궤적(Path) 데이터 백업 (★추가된 부분)
+                const backupPaths = {};
+                if (currentAdapter.paths) {
+                    for (let id in currentAdapter.paths) {
+                        const rawPath = currentAdapter.getPath(id); // 어댑터에서 원본 데이터 가져옴
+
+                        // 데이터 포맷 통일 (Mapbox의 배열 -> 객체로 변환하여 저장)
+                        // Mapbox: [lng, lat], Kakao: {lat, lng}
+                        backupPaths[id] = rawPath.map(p => {
+                            if (Array.isArray(p)) return { lat: p[1], lng: p[0] }; // Mapbox -> 공통 포맷
+                            else return { lat: p.lat, lng: p.lng }; // Kakao -> 공통 포맷
+                        });
+                    }
+                }
+
+                // ==========================================
+                // 2. 엔진 교체 및 복원
+                // ==========================================
+                currentAdapter.destroy(); // 기존 지도 파기
+
+                // 엔진 선택
+                if (engineType === 'kakao') {
+                    currentAdapter = new KakaoAdapter();
+                } else {
+                    currentAdapter = new MapboxAdapter();
+                }
+
+                currentAdapter.init('map', lastCenter, { markers: backupMarkers, paths: backupPaths });
+            },
+            updateMarker: (id, lat, lng) => {
+                // 마커 위치 업데이트
+                currentAdapter.updateMarker(id, lat, lng);
+                // 궤적(선) 그리기 (★이동할 때마다 선을 긋기 위해 추가)
+                currentAdapter.addPathPoint(id, lat, lng);
+            }
+        };
+
+        window.onload = () => currentAdapter.init('map', { lat: 37.5546, lng: 126.9706 });
+    </script>
+</body>
+</html>
