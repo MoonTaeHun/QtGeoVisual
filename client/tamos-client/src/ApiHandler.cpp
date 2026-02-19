@@ -14,7 +14,7 @@ void ApiHandler::startFetching(int intervalMs) {
 void ApiHandler::startServerSimulation()
 {
     // 서버의 시뮬레이션 시작 API 호출
-    QUrl url("http://localhost:8080/api/sim/start");
+    QUrl url("http://DESKTOP-A3T49SK:8080/api/sim/start");
     networkManager->get(QNetworkRequest(url));
 
     // 2. 서버가 생성을 시작했으므로, 1초 뒤부터 데이터를 가져오기 시작함
@@ -25,7 +25,7 @@ void ApiHandler::startServerSimulation()
 
 void ApiHandler::resetServerSimulationData()
 {
-    QUrl url("http://localhost:8080/api/sim/reset");
+    QUrl url("http://DESKTOP-A3T49SK:8080/api/sim/reset");
     QNetworkRequest request(url);
     // DELETE 방식으로 요청
     networkManager->deleteResource(request);
@@ -33,7 +33,7 @@ void ApiHandler::resetServerSimulationData()
 
 void ApiHandler::requestDroneData() {
     // [수정 필요] 실제 Java 서버의 API 엔드포인트 주소를 입력하세요.
-    QUrl url("http://localhost:8080/api/sim/latest");
+    QUrl url("http://DESKTOP-A3T49SK:8080/api/sim/latest");
     QNetworkRequest request(url);
 
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");

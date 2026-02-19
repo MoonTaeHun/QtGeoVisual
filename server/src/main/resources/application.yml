@@ -1,5 +1,6 @@
 server:
   port: 8080 # 서버가 사용할 포트 번호
+  address: 0.0.0.0  # (선택) 모든 IP 대역에서의 접속을 허용한다는 의미입니다.
 
 spring:
   datasource:
