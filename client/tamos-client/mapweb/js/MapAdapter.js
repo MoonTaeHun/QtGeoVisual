@@ -21,4 +21,9 @@ class MapAdapter {
     //히트맵 그리기 인터페이스
     drawHeatmap(dataArray) { throw new Error("Not Implemented"); }
     clearHeatmap() { throw new Error("Not Implemented"); }
+
+    // 커스텀 그리기 인터페이스(type: 'circle', 'rectangle', 'polygon', 'marker', 'text')
+    startDrawing(type) { throw new Error("Not implemented"); }
+    stopDrawing() { throw new Error("Not implemented"); }
+    getDrawnData() { throw new Error("Not implemented"); }
 }

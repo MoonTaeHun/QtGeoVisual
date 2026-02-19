@@ -9,6 +9,9 @@ class KakaoAdapter extends MapAdapter {
         this.heatmapInstance = null;
         this.heatmapData = [];
         this.heatmapContainer = null;
+
+        //그리기 매니저
+        this.drawingManager = null;
     }
 
     init(containerId, center, backupData) {
@@ -19,11 +22,11 @@ class KakaoAdapter extends MapAdapter {
 
         kakao.maps.load(() => {
             const container = document.getElementById(containerId);
-            const options = {
+            const mapOptions = {
                 center: new kakao.maps.LatLng(center.lat, center.lng),
                 level: 3
             };
-            this.map = new kakao.maps.Map(container, options);
+            this.map = new kakao.maps.Map(container, mapOptions);
 
             // 히트맵을 그릴 투명한 도화지(Div)를 지도 바로 위에 덮어씌웁니다.
             this.heatmapContainer = document.createElement('div');
@@ -47,9 +50,37 @@ class KakaoAdapter extends MapAdapter {
                 if (this.heatmapContainer) this.heatmapContainer.style.opacity = '0';
             });
 
+            // [신규] 그리기 매니저 설정
+            const drawingOptions = { // 그리기 도구의 선 두께, 색상 등 스타일 설정
+                map: this.map,
+                drawingMode: [
+                    kakao.maps.drawing.OverlayType.MARKER,
+                    kakao.maps.drawing.OverlayType.CIRCLE,
+                    kakao.maps.drawing.OverlayType.RECTANGLE,
+                    kakao.maps.drawing.OverlayType.POLYGON
+                ],
+                markerOptions: { draggable: true, removable: true },
+                circleOptions: { strokeColor: '#FF0000', fillColor: '#FF0000', fillOpacity: 0.5, editable: true },
+                polygonOptions: { strokeColor: '#0000FF', fillColor: '#0000FF', fillOpacity: 0.5, editable: true },
+                rectangleOptions: { strokeColor: '#00FF00', fillColor: '#00FF00', fillOpacity: 0.5, editable: true }
+            };
+
+            this.drawingManager = new kakao.maps.drawing.DrawingManager(drawingOptions);
+
+            // 그리기가 완료되었을 때 발생하는 이벤트
+            this.drawingManager.addListener('drawend', (data) => {
+                // data.target: 그려진 객체, data.overlayType: 객체 타입
+                console.log("도형 그리기 완료:", data.overlayType);
+
+                // 그리기가 끝나면 자동으로 마우스 상태를 일반 모드로 복귀
+                this.stopDrawing();
+
+                // TODO: 여기서 C++ 측으로 좌표 데이터를 넘겨주는 로직을 추가할 수 있습니다.
+            });
+
             console.log("Kakao Map Initialized");
 
-            // [복원] 백업 데이터가 있다면 복구
+            // 백업 데이터가 있다면 복구
             if (backupData) {
                 // 1. 마커 복원
                 if (backupData.markers) {
@@ -70,7 +101,7 @@ class KakaoAdapter extends MapAdapter {
         });
     }
 
-    // [중요] 지도 전환 시 현재 중심 좌표를 유지하기 위해 필요
+    // 지도 전환 시 현재 중심 좌표를 유지하기 위해 필요
     getCurrentCenter() {
         if (!this.map) return { lat: 37.5546, lng: 126.9706 };
         const center = this.map.getCenter();
@@ -99,14 +130,14 @@ class KakaoAdapter extends MapAdapter {
     }
 
     addPathPoint(id, lat, lng) {
-        // [방어 코드 1] 데이터는 지도가 있든 없든 무조건 저장합니다. (순서 변경)
+        // 데이터는 지도가 있든 없든 무조건 저장합니다. (순서 변경)
         if (!this.paths[id]) this.paths[id] = [];
         this.paths[id].push({lat: lat, lng: lng});
 
-        // [방어 코드 2] 지도가 없으면 그리기만 포기하고 리턴 (데이터는 위에서 저장됨)
+        // 지도가 없으면 그리기만 포기하고 리턴 (데이터는 위에서 저장됨)
         if (!this.map) return;
 
-        // 2. 지도 객체 관리 (Polyline)
+        // 지도 객체 관리 (Polyline)
         const pathArr = this.paths[id].map(p => new kakao.maps.LatLng(p.lat, p.lng));
 
         if (!this.polylines) this.polylines = {};
@@ -153,7 +184,7 @@ class KakaoAdapter extends MapAdapter {
         this.updateHeatmapPositions();
     }
 
-    // [핵심 3] 위/경도(LatLng) -> 화면 픽셀(X, Y) 변환 및 렌더링
+    // 위/경도(LatLng) -> 화면 픽셀(X, Y) 변환 및 렌더링
     updateHeatmapPositions() {
         if (!this.heatmapInstance || this.heatmapData.length === 0) return;
 
@@ -181,7 +212,7 @@ class KakaoAdapter extends MapAdapter {
 
         // 데이터 갱신
         this.heatmapInstance.setData({
-            // [동기화 4] Mapbox의 밀집도(Density)와 비슷해지도록 기준값을 설정합니다.
+            // Mapbox의 밀집도(Density)와 비슷해지도록 기준값을 설정합니다.
             // 150으로 두면, 가중치가 100인 점 하나만 있을 때는 주황색이고, 두 개가 겹치면 빨간색이 됩니다.
             // (만약 Mapbox보다 카카오가 덜 빨갛다면 이 숫자를 100으로 낮추고, 너무 빨갛다면 200으로 올려보세요.)
             max: 150,
@@ -198,5 +229,33 @@ class KakaoAdapter extends MapAdapter {
         if (this.heatmapInstance) {
             this.heatmapInstance.setData({ max: 0, data: [] });
         }
+    }
+
+    startDrawing(type) {
+        if (!this.drawingManager) return;
+
+        let overlayType;
+        switch(type.toLowerCase()) {
+            case 'circle': overlayType = kakao.maps.drawing.OverlayType.CIRCLE; break;
+            case 'rectangle': overlayType = kakao.maps.drawing.OverlayType.RECTANGLE; break;
+            case 'polygon': overlayType = kakao.maps.drawing.OverlayType.POLYGON; break;
+            case 'marker': overlayType = kakao.maps.drawing.OverlayType.MARKER; break;
+            default: console.warn("지원하지 않는 그리기 타입:", type); return;
+        }
+
+        // 그리기 모드 실행 (마우스 커서가 십자선으로 변함)
+        this.drawingManager.select(overlayType);
+    }
+
+    stopDrawing() {
+        if (this.drawingManager) {
+            this.drawingManager.cancel(); // 그리기 취소 및 일반 마우스 모드 복귀
+        }
+    }
+
+    getDrawnData() {
+        // 그려진 객체들의 좌표를 JSON 형태로 반환
+        if (!this.drawingManager) return {};
+        return this.drawingManager.getData();
     }
 }

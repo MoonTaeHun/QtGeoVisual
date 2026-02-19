@@ -6,7 +6,7 @@
     <meta name="referrer" content="no-referrer">
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css" rel="stylesheet">
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js"></script>
-    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=30fb0eda4415c52ecd7b2f2d059f067e&autoload=false"></script>
+    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=30fb0eda4415c52ecd7b2f2d059f067e&autoload=false&libraries=drawing"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/heatmap.js/2.0.2/heatmap.min.js"></script>
     <script src="js/MapAdapter.js"></script>
     <script src="js/MapboxAdapter.js"></script>
@@ -106,6 +106,12 @@
             },
             clearHeatmap: function() {
                 currentAdapter.clearHeatmap();
+            },
+            startDrawing: function(type) {
+                currentAdapter.startDrawing(type);
+            },
+            stopDrawing: function() {
+                currentAdapter.stopDrawing();
             }
         };
 

@@ -106,14 +106,34 @@ ApplicationWindow {
                     text: "히트맵 표출"
                     onClicked: {
                         if(onHeatmap) {
-                            var jsCommand = "mapManager.clearHeatmap();"
-                            mapContainer.runJavaScript(jsCommand)
+                            mapContainer.runJavaScript("mapManager.clearHeatmap();")
                             onHeatmap = false
                         } else {
                             mapBridge.drawHeatmap()
                             onHeatmap = true
                         }
                     }
+                }
+
+                Button {
+                    text: "원 그리기"
+                    onClicked: mapContainer.runJavaScript("mapManager.startDrawing('circle');")
+                }
+                Button {
+                    text: "사각형 그리기"
+                    onClicked: mapContainer.runJavaScript("mapManager.startDrawing('rectangle');")
+                }
+                Button {
+                    text: "다각형 그리기"
+                    onClicked: mapContainer.runJavaScript("mapManager.startDrawing('polygon');")
+                }
+                Button {
+                    text: "아이콘 찍기"
+                    onClicked: mapContainer.runJavaScript("mapManager.startDrawing('marker');")
+                }
+                Button {
+                    text: "그리기 취소"
+                    onClicked: mapContainer.runJavaScript("mapManager.stopDrawing();")
                 }
             }
         }
