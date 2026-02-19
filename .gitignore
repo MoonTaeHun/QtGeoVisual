@@ -1,0 +1,4 @@
+﻿client/tamos-client/build
+server/.idea
+server/target
+client/tamos-client/CMakeLists.txt.user
