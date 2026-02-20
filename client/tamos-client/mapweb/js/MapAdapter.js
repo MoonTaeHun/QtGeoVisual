@@ -1,29 +1,21 @@
 class MapAdapter {
     constructor() {
-        this.map = null;
-        this.markers = {};
-        this.paths = {};
+        this.isReady = false; //로드 완료 여부 플래그
     }
-    // 하위 클래스에서 반드시 구현해야 할 함수들
-    getCurrentCenter() { throw new Error("getCurrentCenter() must be implemented"); }
-    init(containerId, center, backupData) { throw new Error("init() must be implemented"); }
-    updateMarker(id, lat, lng) { throw new Error("updateMarker() must be implemented"); }
+    getCurrentCenter() { throw new Error("Not implemented"); }
+    init(containerId, center, callbacks) { throw new Error("Not implemented"); }
     destroy() {
         const container = document.getElementById('map');
         if (container) container.innerHTML = "";
-        this.markers = {};
-        this.map = null;
     }
 
-    addPathPoint(id, lat, lng) { throw new Error("Not Implemented"); }
-    getPath(id) { return this.paths[id] || []; }
+    // View 핵심 기능: Model 데이터를 받아 화면에 그리기만 함
+    renderAll(data) { throw new Error("Not implemented"); }
 
-    //히트맵 그리기 인터페이스
-    drawHeatmap(dataArray) { throw new Error("Not Implemented"); }
-    clearHeatmap() { throw new Error("Not Implemented"); }
-
-    // 커스텀 그리기 인터페이스(type: 'circle', 'rectangle', 'polygon', 'marker', 'text')
+    // 사용자 조작 관련
     startDrawing(type) { throw new Error("Not implemented"); }
     stopDrawing() { throw new Error("Not implemented"); }
-    getDrawnData() { throw new Error("Not implemented"); }
+
+    // 상태 확인 함수
+    isLoaded() { return this.isReady; }
 }

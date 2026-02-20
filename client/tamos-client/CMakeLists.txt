@@ -25,7 +25,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # 2. 필요한 Qt 컴포넌트 로드
-find_package(Qt6 REQUIRED COMPONENTS Quick Network WebEngineQuick WebEngineCore Network)
+find_package(Qt6 REQUIRED COMPONENTS Quick Network WebEngineQuick WebEngineCore Network Sql WebChannel)
 
 # Qt 정책 설정 (QML 리소스 관련 경고 해결)
 qt_policy(SET QTP0001 NEW)
@@ -39,6 +39,8 @@ qt_add_executable(mytamos_client
     src/MapBridge.h
     src/ApiHandler.cpp
     src/MapBridge.cpp
+    src/userassetmanager.h
+    src/userassetmanager.cpp
 )
 
 # 4. QML 모듈 설정
@@ -56,6 +58,8 @@ target_link_libraries(mytamos_client PRIVATE
     Qt6::Network
     Qt6::WebEngineQuick
     Qt6::WebEngineCore
+    Qt6::Sql
+    Qt6::WebChannel
 )
 
 # 6. 실행 파일 출력 경로 설정

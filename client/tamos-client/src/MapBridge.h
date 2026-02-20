@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QDebug>
+#include "userassetmanager.h"
 
 class MapBridge : public QObject
 {
@@ -16,6 +17,8 @@ public:
     Q_INVOKABLE void resetSimulation();
     Q_INVOKABLE void generateHeatmap();
     Q_INVOKABLE void drawHeatmap();
+    Q_INVOKABLE void saveUserShapes(const QString& json);
+    Q_INVOKABLE QString loadUserShapes();
 
 signals:
     // QML로 보낼 신호: "이 ID를 가진 드론을 (lat, lng)으로 이동시켜라"
@@ -30,6 +33,7 @@ private:
     // 테스트용 좌표 변수
     double currentLat;
     double currentLng;
+    UserAssetManager* m_assetManager = nullptr;
 };
 
 #endif // MAPBRIDGE_H

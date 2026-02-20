@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtWebEngine // WebEngine 모듈 임포트
+import QtWebChannel
 
 ApplicationWindow {
     width: 1000
@@ -30,6 +31,14 @@ ApplicationWindow {
         anchors.fill: parent
         spacing: 0
 
+        WebChannel {
+            id: qmlWebChannel
+            // C++에서 ContextProperty로 등록한 mapBridge를 채널에 등록합니다.
+            Component.onCompleted: {
+                qmlWebChannel.registerObject("mapBridge", mapBridge)
+            }
+        }
+
         // 1. 지도 영역: MSVC 환경에서 WebEngine이 작동하는지 확인
         WebEngineView {
             id: mapContainer
@@ -49,6 +58,7 @@ ApplicationWindow {
 
             // 로컬 HTML 파일 로드 (실행 경로 기준)
             url: "file:///" + applicationDirPath + "/mapweb/index.html"
+            webChannel: qmlWebChannel
 
             onLoadingChanged: function(loadRequest) {
                 if (loadRequest.status === WebEngineView.LoadSucceededStatus) {

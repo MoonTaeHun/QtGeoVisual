@@ -3,6 +3,19 @@
 MapBridge::MapBridge(QObject *parent)
     : QObject(parent), currentLat(37.5546), currentLng(126.9706) // 서울역 초기값
 {
+    this->setObjectName("mapBridge");
+    qDebug() << "MapBridge 생성 시작...";
+
+    // 1. 객체 생성 (this를 부모로 지정하여 메모리 관리 자동화)
+    m_assetManager = new UserAssetManager(this);
+
+    // 2. 초기화 전에 포인터 검사
+    if (m_assetManager) {
+        m_assetManager->initDatabase();
+        qDebug() << "UserAssetManager 초기화 완료";
+    } else {
+        qCritical() << "UserAssetManager 생성 실패!";
+    }
 }
 
 void MapBridge::simulateDroneMove()
@@ -35,4 +48,15 @@ void MapBridge::generateHeatmap()
 void MapBridge::drawHeatmap()
 {
     emit requestHeatmapData();
+}
+
+void MapBridge::saveUserShapes(const QString& json)
+{
+    m_assetManager->saveShapes(json);
+    qDebug() << "User shapes saved to local DB";
+}
+
+QString MapBridge::loadUserShapes()
+{
+    return m_assetManager->loadShapes();
 }

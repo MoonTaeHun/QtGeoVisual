@@ -1,261 +1,216 @@
 class KakaoAdapter extends MapAdapter {
     constructor() {
         super();
+        this.isReady = false;
         this.map = null;
-        this.markers = {};
-        this.paths = {};
-
-        //히트맵 관련 변수
         this.heatmapInstance = null;
-        this.heatmapData = [];
-        this.heatmapContainer = null;
-
-        //그리기 매니저
         this.drawingManager = null;
+        this.callbacks = null;
+
+        // 렌더링된 객체들을 임시 저장 (초기화용)
+        this.renderedShapes = [];
+        this.renderedMarkers = {};
+        this.renderedPaths = {};
     }
 
-    init(containerId, center, backupData) {
-        if (typeof kakao === 'undefined') {
-            console.error("Kakao Maps SDK not loaded.");
-            return;
-        }
+    init(containerId, center, callbacks) {
+        this.callbacks = callbacks;
 
         kakao.maps.load(() => {
             const container = document.getElementById(containerId);
-            const mapOptions = {
+            this.map = new kakao.maps.Map(container, {
                 center: new kakao.maps.LatLng(center.lat, center.lng),
                 level: 3
-            };
-            this.map = new kakao.maps.Map(container, mapOptions);
-
-            // 히트맵을 그릴 투명한 도화지(Div)를 지도 바로 위에 덮어씌웁니다.
-            this.heatmapContainer = document.createElement('div');
-            this.heatmapContainer.style.position = 'absolute';
-            this.heatmapContainer.style.top = '0';
-            this.heatmapContainer.style.left = '0';
-            this.heatmapContainer.style.width = '100%';
-            this.heatmapContainer.style.height = '100%';
-            this.heatmapContainer.style.zIndex = '1';
-            this.heatmapContainer.style.pointerEvents = 'none'; // 마우스 클릭이 지도로 통과되도록 설정
-            this.heatmapContainer.style.transition = 'opacity 0.2s ease-in-out';
-
-            // 지도 컨테이너 안에 히트맵 캔버스용 Div를 자식으로 추가
-            container.appendChild(this.heatmapContainer);
-
-            // 지도를 움직이거나 확대/축소할 때마다 히트맵 좌표를 다시 계산하도록 이벤트 연결
-            kakao.maps.event.addListener(this.map, 'drag', () => this.updateHeatmapPositions());
-            kakao.maps.event.addListener(this.map, 'zoom_changed', () => this.updateHeatmapPositions());
-            kakao.maps.event.addListener(this.map, 'idle', () => this.updateHeatmapPositions());
-            kakao.maps.event.addListener(this.map, 'zoom_start', () => {
-                if (this.heatmapContainer) this.heatmapContainer.style.opacity = '0';
             });
 
-            // [신규] 그리기 매니저 설정
-            const drawingOptions = { // 그리기 도구의 선 두께, 색상 등 스타일 설정
+            // 히트맵 컨테이너 설정
+            this.setupHeatmapContainer(container);
+
+            // 그리기 매니저 설정
+            this.drawingManager = new kakao.maps.drawing.DrawingManager({
                 map: this.map,
                 drawingMode: [
-                    kakao.maps.drawing.OverlayType.MARKER,
                     kakao.maps.drawing.OverlayType.CIRCLE,
                     kakao.maps.drawing.OverlayType.RECTANGLE,
                     kakao.maps.drawing.OverlayType.POLYGON
-                ],
-                markerOptions: { draggable: true, removable: true },
-                circleOptions: { strokeColor: '#FF0000', fillColor: '#FF0000', fillOpacity: 0.5, editable: true },
-                polygonOptions: { strokeColor: '#0000FF', fillColor: '#0000FF', fillOpacity: 0.5, editable: true },
-                rectangleOptions: { strokeColor: '#00FF00', fillColor: '#00FF00', fillOpacity: 0.5, editable: true }
-            };
-
-            this.drawingManager = new kakao.maps.drawing.DrawingManager(drawingOptions);
-
-            // 그리기가 완료되었을 때 발생하는 이벤트
-            this.drawingManager.addListener('drawend', (data) => {
-                // data.target: 그려진 객체, data.overlayType: 객체 타입
-                console.log("도형 그리기 완료:", data.overlayType);
-
-                // 그리기가 끝나면 자동으로 마우스 상태를 일반 모드로 복귀
-                this.stopDrawing();
-
-                // TODO: 여기서 C++ 측으로 좌표 데이터를 넘겨주는 로직을 추가할 수 있습니다.
+                ]
             });
 
-            console.log("Kakao Map Initialized");
+            // 그리기 완료 이벤트
+            this.drawingManager.addListener('drawend', (data) => {
+                let geom = null;
+                let type = '';
 
-            // 백업 데이터가 있다면 복구
-            if (backupData) {
-                // 1. 마커 복원
-                if (backupData.markers) {
-                    for (let id in backupData.markers) {
-                        const m = backupData.markers[id];
-                        this.updateMarker(id, m.lat, m.lng);
+                // [핵심] 억지로 객체를 파싱하지 않고, 카카오가 제공하는 깔끔한 JSON 원본 데이터를 꺼내옵니다.
+                const drawnData = this.drawingManager.getData();
+
+                if (data.overlayType === kakao.maps.drawing.OverlayType.CIRCLE) {
+                    type = 'circle';
+                    const center = data.target.getPosition();
+                    geom = {
+                        center: [center.getLng(), center.getLat()], // [경도, 위도] 순서 유지
+                        radius: data.target.getRadius()
+                    };
+                }
+                else if (data.overlayType === kakao.maps.drawing.OverlayType.RECTANGLE) {
+                    type = 'rectangle';
+                    const rects = drawnData[kakao.maps.drawing.OverlayType.RECTANGLE];
+                    if (rects && rects.length > 0) {
+                        const last = rects[rects.length - 1];
+                        // 좌하단(SW)과 우상단(NE)을 보장하기 위해 min, max 정렬
+                        geom = {
+                            bbox: [
+                                Math.min(last.sPoint.x, last.ePoint.x), Math.min(last.sPoint.y, last.ePoint.y),
+                                Math.max(last.sPoint.x, last.ePoint.x), Math.max(last.sPoint.y, last.ePoint.y)
+                            ]
+                        };
                     }
                 }
-                // 2. 궤적 복원
-                if (backupData.paths) {
-                    for (let id in backupData.paths) {
-                        const pathList = backupData.paths[id];
-                        // 여기서는 map이 확실히 있으므로 바로 그립니다.
-                        pathList.forEach(p => this.addPathPoint(id, p.lat, p.lng));
+                else if (data.overlayType === kakao.maps.drawing.OverlayType.POLYGON) {
+                    type = 'polygon';
+                    const polygons = drawnData[kakao.maps.drawing.OverlayType.POLYGON];
+                    if (polygons && polygons.length > 0) {
+                        const last = polygons[polygons.length - 1];
+                        // 카카오가 내려준 순수 x(경도), y(위도)를 그대로 매핑
+                        geom = { coordinates: last.points.map(p => [p.x, p.y]) };
                     }
                 }
-            }
+
+                // 임시 그리기 오버레이를 지움 (중앙 관리자에서 다시 예쁘게 그려줄 것이므로)
+                this.drawingManager.remove(data.target);
+                this.stopDrawing();
+
+                // Controller에 전달하여 영구 객체로 재렌더링
+                if (geom && this.callbacks && this.callbacks.onShapeDrawn) {
+                    this.callbacks.onShapeDrawn(type, geom);
+                }
+            });
+
+            this.isReady = true; // 준비 완료
+
+            // 초기화 완료 콜백
+            if (this.callbacks.onReady) this.callbacks.onReady();
         });
     }
 
-    // 지도 전환 시 현재 중심 좌표를 유지하기 위해 필요
+    setupHeatmapContainer(container) {
+        this.heatmapContainer = document.createElement('div');
+        this.heatmapContainer.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;pointer-events:none;transition:opacity 0.2s;';
+        container.appendChild(this.heatmapContainer);
+
+        const updateHeatmap = () => this.renderHeatmapPositions();
+        kakao.maps.event.addListener(this.map, 'drag', updateHeatmap);
+        kakao.maps.event.addListener(this.map, 'zoom_changed', updateHeatmap);
+        kakao.maps.event.addListener(this.map, 'zoom_start', () => { this.heatmapContainer.style.opacity = '0'; });
+    }
+
     getCurrentCenter() {
         if (!this.map) return { lat: 37.5546, lng: 126.9706 };
         const center = this.map.getCenter();
         return { lat: center.getLat(), lng: center.getLng() };
     }
 
-    updateMarker(id, lat, lng) {
-        if (!this.map) return; // 카카오는 DOM 오버레이라 맵 없으면 생성 불가
-
-        const pos = new kakao.maps.LatLng(lat, lng);
-        if (this.markers[id]) {
-            this.markers[id].setPosition(pos);
-        } else {
-            const content = document.createElement('div');
-            content.className = 'drone-marker';
-            // CustomOverlay는 map 속성을 지정하면 바로 올라갑니다.
-            this.markers[id] = new kakao.maps.CustomOverlay({
-                position: pos,
-                content: content,
-                map: this.map,
-                xAnchor: 0.5, // 가로 기준 50% 지점 (중앙)
-                yAnchor: 0.5, // 세로 기준 50% 지점 (중앙)
-                zIndex: 3     // 선보다 위에 보이도록 우선순위 높임
-            });
-        }
-    }
-
-    addPathPoint(id, lat, lng) {
-        // 데이터는 지도가 있든 없든 무조건 저장합니다. (순서 변경)
-        if (!this.paths[id]) this.paths[id] = [];
-        this.paths[id].push({lat: lat, lng: lng});
-
-        // 지도가 없으면 그리기만 포기하고 리턴 (데이터는 위에서 저장됨)
-        if (!this.map) return;
-
-        // 지도 객체 관리 (Polyline)
-        const pathArr = this.paths[id].map(p => new kakao.maps.LatLng(p.lat, p.lng));
-
-        if (!this.polylines) this.polylines = {};
-
-        if (this.polylines[id]) {
-            this.polylines[id].setPath(pathArr);
-        } else {
-            this.polylines[id] = new kakao.maps.Polyline({
-                map: this.map,
-                path: pathArr,
-                strokeWeight: 4,
-                strokeColor: '#FF0000',
-                strokeOpacity: 1,
-                strokeStyle: 'solid'
-            });
-        }
-    }
-
-    drawHeatmap(dataArray) {
-        if (!this.map || !this.heatmapContainer) return;
-
-        // 원본 위/경도 데이터 저장
-        this.heatmapData = dataArray;
-        this.heatmapContainer.style.opacity = '0.8';
-
-        // 히트맵 객체가 없다면 최초 1회 생성
-        if (!this.heatmapInstance) {
-            this.heatmapInstance = h337.create({
-                container: this.heatmapContainer,
-                maxOpacity: 1.0,
-                minOpacity: 0,
-                blur: 0.85,
-                gradient: {
-                    0.0: 'rgba(33,102,172,0)',
-                    0.2: 'rgb(103,169,207)',
-                    0.5: 'rgb(253,219,199)',
-                    0.8: 'rgb(239,138,98)',
-                    1.0: 'rgb(178,24,43)'
-                }
-            });
-        }
-
-        // 화면 픽셀로 변환 후 그리기 실행
-        this.updateHeatmapPositions();
-    }
-
-    // 위/경도(LatLng) -> 화면 픽셀(X, Y) 변환 및 렌더링
-    updateHeatmapPositions() {
-        if (!this.heatmapInstance || this.heatmapData.length === 0) return;
-
-        const projection = this.map.getProjection();
-        if (!projection) return;
-
-        const bounds = this.map.getBounds();
-        const points = [];
-
-        this.heatmapData.forEach(p => {
-            const latlng = new kakao.maps.LatLng(p.lat, p.lng);
-
-            if (bounds.contain(latlng)) {
-                const point = projection.containerPointFromCoords(latlng);
-                if (point) {
-                    points.push({
-                        x: Math.floor(point.x),
-                        y: Math.floor(point.y),
-                        value: p.weight, // (0~100 가중치)
-                        radius: 15
-                    });
-                }
-            }
-        });
-
-        // 데이터 갱신
-        this.heatmapInstance.setData({
-            // Mapbox의 밀집도(Density)와 비슷해지도록 기준값을 설정합니다.
-            // 150으로 두면, 가중치가 100인 점 하나만 있을 때는 주황색이고, 두 개가 겹치면 빨간색이 됩니다.
-            // (만약 Mapbox보다 카카오가 덜 빨갛다면 이 숫자를 100으로 낮추고, 너무 빨갛다면 200으로 올려보세요.)
-            max: 150,
-            data: points
-        });
-
-        if (this.heatmapContainer) {
-            this.heatmapContainer.style.opacity = '0.8';
-        }
-    }
-
-    clearHeatmap() {
-        this.heatmapData = [];
-        if (this.heatmapInstance) {
-            this.heatmapInstance.setData({ max: 0, data: [] });
-        }
-    }
-
     startDrawing(type) {
         if (!this.drawingManager) return;
+        let mode;
+        if (type === 'circle') mode = kakao.maps.drawing.OverlayType.CIRCLE;
+        else if (type === 'rectangle') mode = kakao.maps.drawing.OverlayType.RECTANGLE;
+        else if (type === 'polygon') mode = kakao.maps.drawing.OverlayType.POLYGON;
 
-        let overlayType;
-        switch(type.toLowerCase()) {
-            case 'circle': overlayType = kakao.maps.drawing.OverlayType.CIRCLE; break;
-            case 'rectangle': overlayType = kakao.maps.drawing.OverlayType.RECTANGLE; break;
-            case 'polygon': overlayType = kakao.maps.drawing.OverlayType.POLYGON; break;
-            case 'marker': overlayType = kakao.maps.drawing.OverlayType.MARKER; break;
-            default: console.warn("지원하지 않는 그리기 타입:", type); return;
-        }
-
-        // 그리기 모드 실행 (마우스 커서가 십자선으로 변함)
-        this.drawingManager.select(overlayType);
+        if(mode) this.drawingManager.select(mode);
     }
 
     stopDrawing() {
-        if (this.drawingManager) {
-            this.drawingManager.cancel(); // 그리기 취소 및 일반 마우스 모드 복귀
-        }
+        if (this.drawingManager) this.drawingManager.cancel();
     }
 
-    getDrawnData() {
-        // 그려진 객체들의 좌표를 JSON 형태로 반환
-        if (!this.drawingManager) return {};
-        return this.drawingManager.getData();
+    // [핵심] Controller가 주는 데이터를 화면에 뿌림
+    renderAll(data) {
+        if (!this.map || !this.isReady) return;
+        this.clearAll();
+
+        // 1. 도형 렌더링
+        data.shapes.forEach(shape => {
+            let overlay;
+            const style = {
+                strokeColor: shape.style.strokeColor,
+                strokeWeight: shape.style.strokeWidth,
+                fillColor: shape.style.fillColor,
+                fillOpacity: shape.style.fillOpacity
+            };
+
+            if (shape.type === 'circle') {
+                overlay = new kakao.maps.Circle({ map: this.map, center: new kakao.maps.LatLng(shape.geometry.center[1], shape.geometry.center[0]), radius: shape.geometry.radius, ...style });
+            } else if (shape.type === 'rectangle') {
+                const sw = new kakao.maps.LatLng(shape.geometry.bbox[1], shape.geometry.bbox[0]);
+                const ne = new kakao.maps.LatLng(shape.geometry.bbox[3], shape.geometry.bbox[2]);
+                overlay = new kakao.maps.Rectangle({ map: this.map, bounds: new kakao.maps.LatLngBounds(sw, ne), ...style });
+            } else if (shape.type === 'polygon') {
+                const path = shape.geometry.coordinates.map(c => new kakao.maps.LatLng(c[1], c[0]));
+                overlay = new kakao.maps.Polygon({ map: this.map, path: path, ...style });
+            }
+            if (overlay) this.renderedShapes.push(overlay);
+        });
+
+        // 2. 마커 렌더링
+        for (let id in data.markers) {
+            const m = data.markers[id];
+            const content = document.createElement('div');
+            content.className = 'drone-marker';
+            const marker = new kakao.maps.CustomOverlay({
+                position: new kakao.maps.LatLng(m.lat, m.lng),
+                content: content, map: this.map, xAnchor: 0.5, yAnchor: 0.5, zIndex: 3
+            });
+            this.renderedMarkers[id] = marker;
+        }
+
+        // 3. 경로 렌더링
+        for (let id in data.paths) {
+            const pathArr = data.paths[id].map(p => new kakao.maps.LatLng(p.lat, p.lng));
+            const polyline = new kakao.maps.Polyline({
+                map: this.map, path: pathArr,
+                strokeWeight: MapStyles.path.strokeWidth, strokeColor: MapStyles.path.strokeColor, strokeOpacity: 1
+            });
+            this.renderedPaths[id] = polyline;
+        }
+
+        // 4. 히트맵 렌더링
+        this.heatmapDataRef = data.heatmap;
+        this.renderHeatmapPositions();
+    }
+
+    clearAll() {
+        this.renderedShapes.forEach(s => s.setMap(null)); this.renderedShapes = [];
+        for (let id in this.renderedMarkers) this.renderedMarkers[id].setMap(null); this.renderedMarkers = {};
+        for (let id in this.renderedPaths) this.renderedPaths[id].setMap(null); this.renderedPaths = {};
+    }
+
+    renderHeatmapPositions() {
+        if (!this.heatmapDataRef || this.heatmapDataRef.length === 0) {
+            if (this.heatmapInstance) this.heatmapInstance.setData({ max: 0, data: [] });
+            return;
+        }
+
+        if (!this.heatmapInstance) {
+            this.heatmapInstance = h337.create({
+                container: this.heatmapContainer, maxOpacity: 1.0, minOpacity: 0, blur: 0.85,
+                gradient: { 0.0: 'rgba(33,102,172,0)', 0.5: 'rgb(253,219,199)', 1.0: 'rgb(178,24,43)' }
+            });
+        }
+
+        const projection = this.map.getProjection();
+        const bounds = this.map.getBounds();
+        const points = [];
+
+        this.heatmapDataRef.forEach(p => {
+            const latlng = new kakao.maps.LatLng(p.lat, p.lng);
+            if (bounds.contain(latlng)) {
+                const point = projection.containerPointFromCoords(latlng);
+                if (point) points.push({ x: Math.floor(point.x), y: Math.floor(point.y), value: p.weight || 50, radius: 15 });
+            }
+        });
+
+        this.heatmapInstance.setData({ max: 150, data: points });
+        this.heatmapContainer.style.opacity = '0.8';
     }
 }

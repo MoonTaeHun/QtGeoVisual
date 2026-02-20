@@ -6,6 +6,7 @@
 #include <QQuickWindow>
 #include <QWebEngineProfile>
 #include <QWebEngineSettings>
+#include <QWebChannel>
 #include "src/ApiHandler.h"
 #include "src/MapBridge.h"
 
@@ -30,6 +31,7 @@ int main(int argc, char *argv[])
             "--enable-gpu-rasterization "
             "--enable-zero-copy "
             "--disable-web-security");
+    qputenv("QTWEBENGINE_REMOTE_DEBUGGING", "9222");
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
@@ -53,29 +55,26 @@ int main(int argc, char *argv[])
 
     QQmlApplicationEngine engine;
 
-    MapBridge mapBridge;
-    ApiHandler apiHandler;
+    ApiHandler *apiHandler = new ApiHandler(&app);
+    MapBridge *mapBridge = new MapBridge(&app);
 
     // API에서 데이터를 받으면 MapBridge의 신호를 발생시켜 지도를 업데이트함
-    QObject::connect(&mapBridge, SIGNAL(requestStartSimulation()),
-                     &apiHandler, SLOT(startServerSimulation()));
-    QObject::connect(&mapBridge, SIGNAL(requestResetSimulation()),
-                     &apiHandler, SLOT(resetServerSimulationData()));
-    QObject::connect(&mapBridge, SIGNAL(requestGenerateHeatmapData()),
-                     &apiHandler, SLOT(requestGenerateHeatmapData()));
-    QObject::connect(&mapBridge, SIGNAL(requestHeatmapData()),
-                     &apiHandler, SLOT(requestHeatmapData()));
-    QObject::connect(&apiHandler, &ApiHandler::droneDataReceived,
-                     &mapBridge, &MapBridge::updateMarker);
-    QObject::connect(&apiHandler, &ApiHandler::heatmapDataFetched,
-                     &mapBridge, &MapBridge::heatmapDataReady);
+    QObject::connect(mapBridge, SIGNAL(requestStartSimulation()),
+                     apiHandler, SLOT(startServerSimulation()));
+    QObject::connect(mapBridge, SIGNAL(requestResetSimulation()),
+                     apiHandler, SLOT(resetServerSimulationData()));
+    QObject::connect(mapBridge, SIGNAL(requestGenerateHeatmapData()),
+                     apiHandler, SLOT(requestGenerateHeatmapData()));
+    QObject::connect(mapBridge, SIGNAL(requestHeatmapData()),
+                     apiHandler, SLOT(requestHeatmapData()));
+    QObject::connect(apiHandler, &ApiHandler::droneDataReceived,
+                     mapBridge, &MapBridge::updateMarker);
+    QObject::connect(apiHandler, &ApiHandler::heatmapDataFetched,
+                     mapBridge, &MapBridge::heatmapDataReady);
 
     //QML 컨텍스트에 등록
     engine.rootContext()->setContextProperty("applicationDirPath", QCoreApplication::applicationDirPath());
-    engine.rootContext()->setContextProperty("mapBridge", &mapBridge);
-
-    // 서버 통신 시작 (1초마다 요청)
-    //apiHandler.startFetching(1000);
+    engine.rootContext()->setContextProperty("mapBridge", mapBridge);
 
     // CMake qt_add_qml_module에서 설정한 URI 기반 경로
     const QUrl url(u"qrc:/qt/qml/Tamos/qml/main.qml"_qs);
