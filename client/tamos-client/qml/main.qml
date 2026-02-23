@@ -57,7 +57,8 @@ ApplicationWindow {
             backgroundColor: "transparent"
 
             // 로컬 HTML 파일 로드 (실행 경로 기준)
-            url: "file:///" + applicationDirPath + "/mapweb/index.html"
+            //url: "file:///" + applicationDirPath + "/mapweb/index.html"
+            url: "http://127.0.0.1:5500/index.html"
             webChannel: qmlWebChannel
 
             onLoadingChanged: function(loadRequest) {

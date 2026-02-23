@@ -73,6 +73,44 @@ class MapboxAdapter extends MapAdapter {
             });
 
             // 히트맵 설정 생략 (필요시 추가)
+            this.map.addSource('heatmap-source', {
+                'type': 'geojson',
+                'data': { 'type': 'FeatureCollection', 'features': [] }
+            });
+
+            const heatmapColorExpr = ['interpolate', ['linear'], ['heatmap-density']];
+            MapStyles.heatmap.gradient.forEach(stop => {
+                heatmapColorExpr.push(stop.density);
+                heatmapColorExpr.push(stop.color);
+            });
+
+            this.map.addLayer({
+                'id': 'heatmap-layer',
+                'type': 'heatmap',
+                'source': 'heatmap-source',
+                'maxzoom': 18,
+                'paint': {
+                    // 1. [핵심 해결책] 카카오맵의 로직을 완벽하게 모사합니다.
+                    // weight 값이 없으면 카카오처럼 50을 기본으로 주고, 0~150 범위를 0.0~1.0 비율로 쪼갭니다.
+                    'heatmap-weight': [
+                        'interpolate',
+                        ['linear'],
+                        ['coalesce', ['get', 'weight'], 50], // Kakao의 p.weight || 50 과 동일
+                        0, 0,
+                        150, 1   // Kakao의 max: 150 과 동일
+                    ],
+
+                    // 2. 강도(intensity)는 억지로 낮출 필요 없이 정상 범위로 되돌립니다.
+                    'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, 1, 15, 3],
+
+                    // 3. 반경 (StyleConfig 공통 사용)
+                    'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, 2, 15, MapStyles.heatmap.radius],
+
+                    // 4. 색상 및 투명도
+                    'heatmap-color': heatmapColorExpr,
+                    'heatmap-opacity': MapStyles.heatmap.opacity * 0.6
+                }
+            }, 'waterway-label');
 
             this.setupDrawEvents();
             this.isReady = true; // [중요] 모든 레이어 세팅 완료 후 true
@@ -141,6 +179,31 @@ class MapboxAdapter extends MapAdapter {
         const source = this.map.getSource('master-source');
         if (source) {
             source.setData({ 'type': 'FeatureCollection', 'features': features });
+        }
+
+        // [수정된 히트맵 데이터 변환 및 소스 업데이트]
+        // 1. 소스 객체를 딱 한 번만 가져와서 변수에 담습니다.
+        const heatmapSource = this.map.getSource('heatmap-source');
+
+        // 2. 소스가 정상적으로 존재할 때만 분기 처리
+        if (heatmapSource) {
+            if (data.heatmap && Array.isArray(data.heatmap) && data.heatmap.length > 0) {
+                // 데이터가 있을 때: GeoJSON으로 변환해서 넣기
+                const heatmapFeatures = data.heatmap.map(point => {
+                    return turf.point([point.lng, point.lat], { weight: point.weight || 1 });
+                });
+
+                heatmapSource.setData({
+                    'type': 'FeatureCollection',
+                    'features': heatmapFeatures
+                });
+            } else {
+                // 데이터가 없을 때 (Clear 처리): 빈 배열 넣기
+                heatmapSource.setData({
+                    'type': 'FeatureCollection',
+                    'features': []
+                });
+            }
         }
 
         // 마커 업데이트

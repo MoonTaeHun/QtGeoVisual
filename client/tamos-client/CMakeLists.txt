@@ -67,6 +67,3 @@ target_link_libraries(mytamos_client PRIVATE
 set_target_properties(mytamos_client PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
 )
-
-# mapweb 폴더 전체(하위 js, css 포함)를 빌드 디렉토리로 복사
-file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/mapweb" DESTINATION "${CMAKE_BINARY_DIR}")

@@ -102,6 +102,25 @@ class KakaoAdapter extends MapAdapter {
         kakao.maps.event.addListener(this.map, 'drag', updateHeatmap);
         kakao.maps.event.addListener(this.map, 'zoom_changed', updateHeatmap);
         kakao.maps.event.addListener(this.map, 'zoom_start', () => { this.heatmapContainer.style.opacity = '0'; });
+
+        // 1. 공통 그라데이션 설정을 heatmap.js 규격(오브젝트)으로 변환
+        let kakaoGradient = {};
+        MapStyles.heatmap.gradient.forEach(stop => {
+            // 밀도 0.0은 heatmap.js에서 오류를 낼 수 있으므로 제외하거나 미세한 값으로 처리
+            if (stop.density > 0) {
+                kakaoGradient[stop.density] = stop.color;
+            }
+        });
+
+        // 2. heatmap.js 설정 객체에 주입
+        this.heatmapInstance = h337.create({
+            container: this.heatmapContainer, // [주의] document.getElementById(...) 대신 this.heatmapContainer 사용
+            radius: MapStyles.heatmap.radius,
+            maxOpacity: MapStyles.heatmap.opacity,
+            minOpacity: 0,
+            blur: .75,
+            gradient: kakaoGradient
+        });
     }
 
     getCurrentCenter() {
@@ -191,13 +210,6 @@ class KakaoAdapter extends MapAdapter {
             return;
         }
 
-        if (!this.heatmapInstance) {
-            this.heatmapInstance = h337.create({
-                container: this.heatmapContainer, maxOpacity: 1.0, minOpacity: 0, blur: 0.85,
-                gradient: { 0.0: 'rgba(33,102,172,0)', 0.5: 'rgb(253,219,199)', 1.0: 'rgb(178,24,43)' }
-            });
-        }
-
         const projection = this.map.getProjection();
         const bounds = this.map.getBounds();
         const points = [];
@@ -211,6 +223,6 @@ class KakaoAdapter extends MapAdapter {
         });
 
         this.heatmapInstance.setData({ max: 150, data: points });
-        this.heatmapContainer.style.opacity = '0.8';
+        this.heatmapContainer.style.opacity = '1';
     }
 }
