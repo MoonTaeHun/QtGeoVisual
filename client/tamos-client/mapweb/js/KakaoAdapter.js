@@ -13,14 +13,16 @@ class KakaoAdapter extends MapAdapter {
         this.renderedPaths = {};
     }
 
-    init(containerId, center, callbacks) {
+    init(containerId, viewState, callbacks) {
         this.callbacks = callbacks;
 
         kakao.maps.load(() => {
             const container = document.getElementById(containerId);
+            const kakaoLevel = this.getKakaoLevelFromMapboxZoom(viewState.zoom);
+
             this.map = new kakao.maps.Map(container, {
-                center: new kakao.maps.LatLng(center.lat, center.lng),
-                level: 3
+                center: new kakao.maps.LatLng(viewState.center.lat, viewState.center.lng),
+                level: kakaoLevel
             });
 
             // 히트맵 컨테이너 설정
@@ -127,6 +129,36 @@ class KakaoAdapter extends MapAdapter {
         if (!this.map) return { lat: 37.5546, lng: 126.9706 };
         const center = this.map.getCenter();
         return { lat: center.getLat(), lng: center.getLng() };
+    }
+
+    getCurrentViewState() {
+        if (!this.map) return { center: { lat: 37.5546, lng: 126.9706 }, zoom: 14 };
+        
+        const center = this.map.getCenter();
+        const kakaoLevel = this.map.getLevel();
+        const standardZoom = this.getMapboxZoomFromKakaoLevel(kakaoLevel);
+        
+        return { 
+            center: { lat: center.getLat(), lng: center.getLng() }, 
+            zoom: standardZoom 
+        };
+    }
+
+    // 1. 맵박스 줌(소수점) -> 카카오 레벨(정수) 변환 테이블
+    getKakaoLevelFromMapboxZoom(zoom) {
+        // 반올림(round) 대신 내림(floor)이나 올림(ceil)을 섞어 쓰면 줌이 튀는 걸 방지할 수 있습니다.
+        // 여기서는 맵박스 줌 14.0~14.99까지는 무조건 카카오 레벨 4로 고정되게 만듭니다.
+        return Math.max(1, Math.min(14, 18 - Math.floor(zoom)));
+    }
+
+    // 2. 카카오 레벨(정수) -> 맵박스 줌(소수점) 역변환 테이블
+    getMapboxZoomFromKakaoLevel(level) {
+        const mapping = {
+            1: 17.0, 2: 16.0, 3: 15.0, 4: 14.0, 5: 13.0,
+            6: 12.0, 7: 11.0, 8: 10.0, 9: 9.0, 10: 8.0,
+            11: 7.0, 12: 6.0, 13: 5.0, 14: 4.0
+        };
+        return mapping[level] || 14.0;
     }
 
     startDrawing(type) {

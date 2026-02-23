@@ -9,17 +9,29 @@ const mapManager = {
     },
 
     switchEngine: function(engineType, forceCenter = null) {
-        let center = forceCenter;
+        // 기본 뷰 상태 (Mapbox 줌 14 기준)
+        let viewState = {
+            center: forceCenter || { lat: 37.5546, lng: 126.9706 },
+            zoom: 14 
+        };
 
         if (this.currentAdapter) {
-            if (!center) center = this.currentAdapter.getCurrentCenter();
-            this.currentAdapter.destroy();
+            // 기존 엔진에서 중심 좌표와 줌 레벨을 모두 가져옵니다.
+            if (typeof this.currentAdapter.getCurrentViewState === 'function') {
+                viewState = this.currentAdapter.getCurrentViewState();
+                viewState.zoom = Math.round(viewState.zoom * 2) / 2;
+            }
+            
+            // 초기화 시 forceCenter가 넘어왔다면 중심 좌표만 덮어씌움
+            if (forceCenter) viewState.center = forceCenter;
+            
+            this.currentAdapter.destroy(); //
         }
 
         this.currentAdapter = engineType === 'kakao' ? new KakaoAdapter() : new MapboxAdapter();
 
         // 어댑터 초기화 및 콜백 연결
-        this.currentAdapter.init(this.containerId, center, {
+        this.currentAdapter.init(this.containerId, viewState, {
             // 그리기 완료 시 Model에 저장 후 전체 화면 갱신
             onShapeDrawn: (type, geometry) => {
                 // 1. 중앙 데이터 저장소(Model)에 추가
@@ -51,9 +63,6 @@ const mapManager = {
         if (this.currentAdapter && this.currentAdapter.isLoaded()) {
             this.currentAdapter.renderAll(this.shapeManager.getAllData());
         }
-
-        // 로딩 중이라면? 그냥 무시합니다.
-        // 어차피 로드가 끝나는 순간 onReady 콜백에서 최신 데이터를 한 번에 그릴 거니까요.
     },
 
     drawHeatmap: function(dataJsonString) {
@@ -79,10 +88,10 @@ const mapManager = {
         if (this.currentAdapter) this.currentAdapter.stopDrawing();
     },
 
-    // [신규] 호스트(C++)로부터 데이터를 읽어와서 ShapeManager에 주입
+    // 호스트(C++)로부터 데이터를 읽어와서 ShapeManager에 주입
     loadFromHost: function() {
         if (window.mapBridge) {
-            // [핵심 수정] 결과를 반환받기 위해 콜백 함수(function(jsonString))를 인자로 넣습니다.
+            // 결과를 반환받기 위해 콜백 함수(function(jsonString))를 인자로 넣습니다.
             window.mapBridge.loadUserShapes(function(jsonString) {
                 if (!jsonString) return; // 데이터가 없으면 무시
 
@@ -94,7 +103,7 @@ const mapManager = {
                         mapManager.shapeManager.shapes = savedShapes;
                         console.log(`${savedShapes.length}개의 도형을 DB에서 불러왔습니다.`);
 
-                        // [중요] 데이터를 다 불러온 후에 화면에 렌더링을 지시해야 합니다.
+                        // 데이터를 다 불러온 후에 화면에 렌더링을 지시해야 합니다.
                         if (mapManager.currentAdapter && mapManager.currentAdapter.isLoaded()) {
                             mapManager.currentAdapter.renderAll(mapManager.shapeManager.getAllData());
                         }
@@ -114,7 +123,7 @@ const mapManager = {
             const allShapes = mapManager.shapeManager.getAllShapes();
             const jsonString = JSON.stringify(allShapes);
 
-            // [핵심 수정] 빈 콜백 함수를 추가하여 WebChannel이 자동으로 통신 id를 생성하게 만듭니다.
+            // 빈 콜백 함수를 추가하여 WebChannel이 자동으로 통신 id를 생성하게 만듭니다.
             window.mapBridge.saveUserShapes(jsonString, function() {
                 // 이 블록은 C++에서 m_assetManager->saveShapes()가 무사히 끝나면 실행됩니다.
                 console.log("C++ 호스트 DB에 저장 완료 응답 받음!");

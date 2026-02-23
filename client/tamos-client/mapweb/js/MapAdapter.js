@@ -3,7 +3,8 @@ class MapAdapter {
         this.isReady = false; //로드 완료 여부 플래그
     }
     getCurrentCenter() { throw new Error("Not implemented"); }
-    init(containerId, center, callbacks) { throw new Error("Not implemented"); }
+    getCurrentViewState() { throw new Error("Not implemented"); }
+    init(containerId, viewState, callbacks) { throw new Error("Not implemented"); }
     destroy() {
         const container = document.getElementById('map');
         if (container) container.innerHTML = "";

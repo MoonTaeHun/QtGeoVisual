@@ -11,15 +11,15 @@ class MapboxAdapter extends MapAdapter {
         this.domMarkers = {};
     }
 
-    init(containerId, center, callbacks) {
+    init(containerId, viewState, callbacks) {
         this.callbacks = callbacks;
         mapboxgl.accessToken = 'pk.eyJ1IjoibWF5YmU4MzE0IiwiYSI6ImNtbGs4ZHhrYzAzcmIzZnNkNGFkaThqd3MifQ.DRDOAE4bq1G2TgMDmcxVSQ';
 
         this.map = new mapboxgl.Map({
             container: containerId,
             style: 'mapbox://styles/mapbox/streets-v12',
-            center: [center.lng, center.lat],
-            zoom: 14
+            center: [viewState.center.lng, viewState.center.lat],
+            zoom: viewState.zoom
         });
 
         this.map.on('load', () => {
@@ -310,5 +310,16 @@ class MapboxAdapter extends MapAdapter {
         if (!this.map) return { lat: 37.5546, lng: 126.9706 };
         const center = this.map.getCenter();
         return { lat: center.lat, lng: center.lng };
+    }
+
+    // 2. 현재 상태를 내보내는 함수 추가 (기존 getCurrentCenter를 대체/확장)
+    getCurrentViewState() {
+        if (!this.map) return { center: { lat: 37.5546, lng: 126.9706 }, zoom: 14 };
+        
+        const center = this.map.getCenter();
+        return { 
+            center: { lat: center.lat, lng: center.lng }, 
+            zoom: this.map.getZoom() 
+        };
     }
 }
