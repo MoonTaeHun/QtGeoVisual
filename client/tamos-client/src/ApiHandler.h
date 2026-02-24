@@ -31,8 +31,8 @@ private slots:
     void onHeatmapReplyFinished(QNetworkReply* reply);
 
 private:
-    QNetworkAccessManager *networkManager;
-    QTimer *fetchTimer;
+    QNetworkAccessManager * networkManager = nullptr;
+    QTimer * fetchTimer = nullptr;
 };
 
 #endif

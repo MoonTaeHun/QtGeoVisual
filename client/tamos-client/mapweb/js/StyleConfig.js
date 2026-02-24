@@ -33,5 +33,22 @@ const MapStyles = {
             { density: 0.8, color: 'rgb(255, 255, 0)' },     // 노란색
             { density: 1.0, color: 'rgb(255, 0, 0)' }        // 빨간색
         ]
+    },
+    marker: {
+        defaultIcon: 'assets/drone_icon.png', // 공통 아이콘 리소스 경로
+        iconSize: [32, 32],                 // [width, height]
+        label: {
+            fontSize: '12px',
+            color: '#000000',
+            outlineColor: '#FFFFFF',
+            outlineWidth: 2,
+            // 아이콘 대비 상대적 위치 오프셋 (텍스트 위치 선택용)
+            offsets: {
+                'top': [0, -25],    // 아이콘 위
+                'bottom': [0, 25],  // 아이콘 아래
+                'left': [-25, 0],   // 아이콘 왼쪽
+                'right': [25, 0]    // 아이콘 오른쪽
+            }
+        }
     }
 };

@@ -1,12 +1,15 @@
 #include "ApiHandler.h"
 
-ApiHandler::ApiHandler(QObject *parent) : QObject(parent) {
+ApiHandler::ApiHandler(QObject *parent)
+    : QObject(parent)
+{
     networkManager = new QNetworkAccessManager(this);
     fetchTimer = new QTimer(this);
     connect(fetchTimer, &QTimer::timeout, this, &ApiHandler::requestDroneData);
 }
 
-void ApiHandler::startFetching(int intervalMs) {
+void ApiHandler::startFetching(int intervalMs)
+{
     fetchTimer->start(intervalMs);
 }
 
@@ -43,8 +46,10 @@ void ApiHandler::requestDroneData() {
     });
 }
 
-void ApiHandler::onReplyFinished(QNetworkReply *reply) {
-    if (reply->error() == QNetworkReply::NoError) {
+void ApiHandler::onReplyFinished(QNetworkReply *reply)
+{
+    if(reply->error() == QNetworkReply::NoError)
+    {
         QByteArray response = reply->readAll();
         QJsonDocument jsonDoc = QJsonDocument::fromJson(response);
 
@@ -60,9 +65,12 @@ void ApiHandler::onReplyFinished(QNetworkReply *reply) {
                 emit droneDataReceived(id, lat, lng, "drone");
             }
         }
-    } else {
+    }
+    else
+    {
         qDebug() << "API 접속 실패 (주소 확인 필요):" << reply->errorString();
     }
+
     reply->deleteLater();
 }
 
@@ -81,10 +89,12 @@ void ApiHandler::requestGenerateHeatmapData()
     QNetworkReply* reply = networkManager->post(request, postData);
 
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
-        if (reply->error() == QNetworkReply::NoError) {
-            // 서버에서 보낸 메시지("500개의 랜덤 히트맵 데이터가...")를 읽음
+        if(reply->error() == QNetworkReply::NoError)
+        {
             qDebug() << "POST 요청 성공";
-        } else {
+        }
+        else
+        {
             qDebug() << "POST 요청 실패:" << reply->errorString();
         }
 
@@ -105,11 +115,15 @@ void ApiHandler::requestHeatmapData()
 
 void ApiHandler::onHeatmapReplyFinished(QNetworkReply* reply)
 {
-    if (reply->error() == QNetworkReply::NoError) {
+    if(reply->error() == QNetworkReply::NoError)
+    {
         QString jsonData = QString::fromUtf8(reply->readAll());
         emit heatmapDataFetched(jsonData); // MapBridge로 데이터 전달
-    } else {
+    }
+    else
+    {
         qDebug() << "히트맵 API 에러:" << reply->errorString();
     }
+
     reply->deleteLater();
 }

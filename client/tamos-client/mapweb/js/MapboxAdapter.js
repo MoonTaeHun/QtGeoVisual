@@ -9,6 +9,7 @@ class MapboxAdapter extends MapAdapter {
         this.drawCoords = [];
         this.previewFeature = null;
         this.domMarkers = {};
+        this.renderedShapeMarkers = [];
     }
 
     init(containerId, viewState, callbacks) {
@@ -72,7 +73,7 @@ class MapboxAdapter extends MapAdapter {
                 'paint': { 'line-color': '#0000FF', 'line-width': 2 }
             });
 
-            // 히트맵 설정 생략 (필요시 추가)
+            // 히트맵 설정
             this.map.addSource('heatmap-source', {
                 'type': 'geojson',
                 'data': { 'type': 'FeatureCollection', 'features': [] }
@@ -126,109 +127,180 @@ class MapboxAdapter extends MapAdapter {
     renderAll(data) {
         if (!this.map || !this.isReady) return;
 
-        const features = [];
+        // 1. [핵심 성능 개선] 정적 데이터(도형, 경로)가 변경되었는지 문자열 비교(Hash)로 확인
+        const currentStaticHash = JSON.stringify(data.shapes) + JSON.stringify(data.paths);
 
-        // 1. 도형 변환 및 스타일 주입
-        data.shapes.forEach(shape => {
-            try {
-                let f = null;
-                if (shape.type === 'circle') {
-                    const radiusKm = shape.geometry.radius / 1000;
-                    if (radiusKm > 0) f = turf.circle(shape.geometry.center, radiusKm, { units: 'kilometers' });
-                } else if (shape.type === 'rectangle') {
-                    f = turf.bboxPolygon(shape.geometry.bbox);
-                } else if (shape.type === 'polygon') {
-                    let coords = [...shape.geometry.coordinates];
-                    if (coords.length >= 3) {
-                        if (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1]) {
-                            coords.push(coords[0]);
-                        }
-                        f = turf.polygon([coords]);
-                    }
-                }
-
-                if (f) {
-                    // [해결책] StyleConfig의 값을 레이어가 사용하는 속성명으로 정확히 매핑
-                    f.properties = {
-                        'fillColor': shape.style.fillColor,
-                        'fillOpacity': shape.style.fillOpacity,
-                        'strokeColor': shape.style.strokeColor,
-                        'strokeWidth': shape.style.strokeWidth
-                    };
-                    features.push(f);
-                }
-            } catch (e) { console.error("Shape rendering error:", e); }
-        });
-
-        // 2. 경로 데이터 변환
-        for (let id in data.paths) {
-            try {
-                const pathData = data.paths[id];
-                if (pathData.length > 1) {
-                    const line = turf.lineString(pathData.map(p => [p.lng, p.lat]));
-                    line.properties = {
-                        'strokeColor': MapStyles.path.strokeColor,
-                        'strokeWidth': MapStyles.path.strokeWidth
-                    };
-                    features.push(line);
-                }
-            } catch (e) {}
-        }
-
-        // 소스 업데이트
-        const source = this.map.getSource('master-source');
-        if (source) {
-            source.setData({ 'type': 'FeatureCollection', 'features': features });
-        }
-
-        // [수정된 히트맵 데이터 변환 및 소스 업데이트]
-        // 1. 소스 객체를 딱 한 번만 가져와서 변수에 담습니다.
-        const heatmapSource = this.map.getSource('heatmap-source');
-
-        // 2. 소스가 정상적으로 존재할 때만 분기 처리
-        if (heatmapSource) {
-            if (data.heatmap && Array.isArray(data.heatmap) && data.heatmap.length > 0) {
-                // 데이터가 있을 때: GeoJSON으로 변환해서 넣기
-                const heatmapFeatures = data.heatmap.map(point => {
-                    return turf.point([point.lng, point.lat], { weight: point.weight || 1 });
-                });
-
-                heatmapSource.setData({
-                    'type': 'FeatureCollection',
-                    'features': heatmapFeatures
-                });
-            } else {
-                // 데이터가 없을 때 (Clear 처리): 빈 배열 넣기
-                heatmapSource.setData({
-                    'type': 'FeatureCollection',
-                    'features': []
-                });
+        // 데이터가 이전과 다를 때만 무거운 DOM 작업과 GeoJSON 파싱을 수행합니다.
+        if (this._lastStaticHash !== currentStaticHash) {
+            
+            // 기존 마커 DOM 싹 지우기
+            if (this.renderedShapeMarkers) {
+                this.renderedShapeMarkers.forEach(m => m.remove());
             }
+            this.renderedShapeMarkers = [];
+
+            const features = [];
+
+            // 도형 및 마커 변환
+            data.shapes.forEach(shape => {
+                try {
+                    let f = null;
+                    if (shape.type === 'circle') {
+                        const radiusKm = shape.geometry.radius / 1000;
+                        if (radiusKm > 0) f = turf.circle(shape.geometry.center, radiusKm, { units: 'kilometers' });
+                    } else if (shape.type === 'rectangle') {
+                        f = turf.bboxPolygon(shape.geometry.bbox);
+                    } else if (shape.type === 'polygon') {
+                        let coords = [...shape.geometry.coordinates];
+                        if (coords.length >= 3) {
+                            if (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1]) {
+                                coords.push(coords[0]);
+                            }
+                            f = turf.polygon([coords]);
+                        }
+                    } else if (shape.type === 'marker') {
+                        // 1. 컨테이너를 Flexbox로 설정 (복잡한 위치 계산 제거)
+                        const el = document.createElement('div');
+                        el.className = 'custom-marker-container';
+                        el.style.display = 'flex';
+                        el.style.flexDirection = 'column';  // 위에서 아래로 배치
+                        el.style.alignItems = 'center';     // 가로 중앙 정렬
+
+                        // 2. 아이콘 이미지
+                        const img = document.createElement('img');
+                        img.src = (shape.style && shape.style.icon) ? shape.style.icon : (MapStyles.marker.defaultIcon || '');
+                        // 크기는 부모 div가 아닌 img 태그 자체에 직접 줍니다. (에러 방지용 안전 장치 포함)
+                        const iconWidth = (typeof MapStyles !== 'undefined' && MapStyles.marker && MapStyles.marker.iconSize) ? MapStyles.marker.iconSize[0] : 24;
+                        const iconHeight = (typeof MapStyles !== 'undefined' && MapStyles.marker && MapStyles.marker.iconSize) ? MapStyles.marker.iconSize[1] : 24;
+                        img.style.width = iconWidth + 'px';
+                        img.style.height = iconHeight + 'px';
+                        el.appendChild(img);
+
+                        // 3. 텍스트 라벨 (아이콘 바로 아래에 자연스럽게 붙음)
+                        const name = (shape.properties && shape.properties.name) ? shape.properties.name : undefined;
+                        if (name) {
+                            const label = document.createElement('div');
+                            label.innerText = name;
+                            label.style.marginTop = '4px'; // 아이콘과 글자 사이 간격 띄우기
+                            label.style.padding = '3px 6px';
+                            label.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+                            label.style.border = '1px solid #333';
+                            label.style.borderRadius = '4px';
+                            label.style.fontSize = '12px';
+                            label.style.fontWeight = 'bold';
+                            label.style.color = '#000';
+                            label.style.whiteSpace = 'nowrap';
+                            label.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+                            
+                            el.appendChild(label);
+                        }
+
+                        // 4. 마커 등록
+                        // anchor를 'bottom'으로 하면 마커의 맨 아랫부분(라벨의 바닥)이 좌표 위치에 정확히 꽂힙니다.
+                        const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+                            .setLngLat([shape.geometry.coordinates[0], shape.geometry.coordinates[1]])
+                            .addTo(this.map);
+                            
+                        this.renderedShapeMarkers.push(marker);
+                        return; // 마커 처리는 여기서 끝. GeoJSON feature 배열에 넣지 않음.
+                    }
+
+                    if (f) {
+                        f.properties = {
+                            'fillColor': shape.style.fillColor,
+                            'fillOpacity': shape.style.fillOpacity,
+                            'strokeColor': shape.style.strokeColor,
+                            'strokeWidth': shape.style.strokeWidth
+                        };
+                        features.push(f);
+                    }
+                } catch (e) { console.error("Shape rendering error:", e); }
+            });
+
+            // 경로 데이터 변환
+            for (let id in data.paths) {
+                try {
+                    const pathData = data.paths[id];
+                    if (pathData.length > 1) {
+                        const line = turf.lineString(pathData.map(p => [p.lng, p.lat]));
+                        line.properties = {
+                            'strokeColor': MapStyles.path.strokeColor,
+                            'strokeWidth': MapStyles.path.strokeWidth
+                        };
+                        features.push(line);
+                    }
+                } catch (e) {}
+            }
+
+            // 소스 업데이트
+            const source = this.map.getSource('master-source');
+            if (source) {
+                source.setData({ 'type': 'FeatureCollection', 'features': features });
+            }
+
+            // 업데이트된 상태 저장 (다음번 호출 때 패스하기 위함)
+            this._lastStaticHash = currentStaticHash; 
         }
 
-        // 마커 업데이트
+        // 2. 히트맵 데이터 최적화 (히트맵도 데이터가 바뀔 때만 업데이트)
+        const currentHeatmapHash = JSON.stringify(data.heatmap);
+        if (this._lastHeatmapHash !== currentHeatmapHash) {
+            const heatmapSource = this.map.getSource('heatmap-source');
+            if (heatmapSource) {
+                if (data.heatmap && Array.isArray(data.heatmap) && data.heatmap.length > 0) {
+                    const heatmapFeatures = data.heatmap.map(point => turf.point([point.lng, point.lat], { weight: point.weight || 1 }));
+                    heatmapSource.setData({ 'type': 'FeatureCollection', 'features': heatmapFeatures });
+                } else {
+                    heatmapSource.setData({ 'type': 'FeatureCollection', 'features': [] });
+                }
+            }
+            this._lastHeatmapHash = currentHeatmapHash;
+        }
+
+        // 3. 동적 마커 렌더링 (실시간 드론 위치는 매번 업데이트)
         this.renderMarkers(data.markers);
     }
 
     renderMarkers(markers) {
+        const markerFeatures = [];
+    
         for (let id in markers) {
             const m = markers[id];
-            if (this.domMarkers[id]) {
-                this.domMarkers[id].setLngLat([m.lng, m.lat]);
-            } else {
-                const el = document.createElement('div');
-                el.className = 'drone-marker';
-                this.domMarkers[id] = new mapboxgl.Marker(el).setLngLat([m.lng, m.lat]).addTo(this.map);
-            }
+            // 텍스트 위치 설정 (기본값 bottom)
+            const labelPos = m.labelPosition || 'bottom'; 
+            const offset = MapStyles.marker.label.offsets[labelPos];
+
+            markerFeatures.push({
+                'type': 'Feature',
+                'geometry': { 'type': 'Point', 'coordinates': [m.lng, m.lat] },
+                'properties': {
+                    'id': id,
+                    'title': m.name || '', // 표시할 텍스트
+                    'icon': m.icon || MapStyles.marker.defaultIcon,
+                    // 맵박스 규격으로 오프셋 변환 (단위: em)
+                    'offset': [offset[0] / 12, offset[1] / 12], 
+                    'anchor': labelPos === 'top' ? 'bottom' : (labelPos === 'bottom' ? 'top' : labelPos)
+                }
+            });
         }
+
+        // 전용 소스에 데이터 주입 (init에서 heatmap처럼 소스/레이어 미리 생성 필요)
+        const source = this.map.getSource('marker-source');
+        if (source) source.setData({ 'type': 'FeatureCollection', 'features': markerFeatures });
     }
 
     // 마우스 이벤트 및 그리기 로직 (기존 카카오 UX 모사 로직 유지)
     setupDrawEvents() {
         this.map.on('click', (e) => {
             if (!this.drawMode) return;
+
             const pos = [e.lngLat.lng, e.lngLat.lat];
-            if (this.drawMode === 'circle' || this.drawMode === 'rectangle') {
+
+            if (this.drawMode === 'marker') {
+                this.drawCoords = [pos];
+                this.finishDrawing();
+                return;
+            } else if (this.drawMode === 'circle' || this.drawMode === 'rectangle') {
                 if (this.drawCoords.length === 0) this.drawCoords.push(pos);
                 else { this.drawCoords.push(pos); this.finishDrawing(); }
             } else if (this.drawMode === 'polygon') {
@@ -268,8 +340,12 @@ class MapboxAdapter extends MapAdapter {
 
     finishDrawing() {
         if (!this.drawMode) return;
+        
         let geom = null;
-        if (this.drawMode === 'circle') {
+        
+        if (this.drawMode === 'marker') {
+            geom = { coordinates: this.drawCoords[0] };
+        } else if (this.drawMode === 'circle') {
             const radiusKm = turf.distance(this.drawCoords[0], this.drawCoords[1], { units: 'kilometers' });
             geom = { center: this.drawCoords[0], radius: radiusKm * 1000 };
         } else if (this.drawMode === 'rectangle') {

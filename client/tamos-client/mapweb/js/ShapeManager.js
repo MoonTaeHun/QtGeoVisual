@@ -6,15 +6,46 @@ class ShapeManager {
         this.heatmap = [];   // [{lat, lng, weight}]
     }
 
-    addShape(type, geometry) {
+    addShape(type, geometry, properties = {}, style = null) {
         const shape = {
             id: 'shape-' + Date.now(),
             type: type,
             geometry: geometry, // circle: {center, radius}, bbox: [minX,minY,maxX,maxY], polygon: [[lng,lat]...]
-            style: MapStyles[type] || MapStyles.polygon
+            properties: properties, // [핵심] 여기서 데이터를 저장해야 합니다!
+            style: style || this.getDefaultStyle(type)
         };
         this.shapes.push(shape);
         return shape;
+    }
+
+    getDefaultStyle(type) {
+        const styles = typeof MapStyles !== 'undefined' ? MapStyles : {};
+
+        switch (type) {
+            case 'marker':
+                return {
+                    icon: (styles.marker && styles.marker.defaultIcon) ? styles.marker.defaultIcon : '',
+                    labelPosition: 'bottom'
+                };
+            case 'polygon':
+            case 'circle':
+            case 'rectangle':
+                return {
+                    fillColor: (styles.polygon && styles.polygon.fillColor) ? styles.polygon.fillColor : '#0000FF',
+                    fillOpacity: (styles.polygon && styles.polygon.fillOpacity) ? styles.polygon.fillOpacity : 0.4,
+                    strokeColor: (styles.polygon && styles.polygon.strokeColor) ? styles.polygon.strokeColor : '#0000FF',
+                    strokeWidth: (styles.polygon && styles.polygon.strokeWidth) ? styles.polygon.strokeWidth : 3
+                };
+            case 'path':
+            case 'line':
+            case 'polyline':
+                return {
+                    strokeColor: (styles.path && styles.path.strokeColor) ? styles.path.strokeColor : '#FF0000',
+                    strokeWidth: (styles.path && styles.path.strokeWidth) ? styles.path.strokeWidth : 3
+                };
+            default:
+                return {};
+        }
     }
 
     updateMarker(id, lat, lng) {

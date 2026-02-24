@@ -1,4 +1,4 @@
-const mapManager = {
+window.mapManager = {
     shapeManager: new ShapeManager(),
     currentAdapter: null,
     containerId: '',
@@ -34,15 +34,23 @@ const mapManager = {
         this.currentAdapter.init(this.containerId, viewState, {
             // 그리기 완료 시 Model에 저장 후 전체 화면 갱신
             onShapeDrawn: (type, geometry) => {
-                // 1. 중앙 데이터 저장소(Model)에 추가
-                this.shapeManager.addShape(type, geometry);
-
-                // 2. 화면 갱신 (View)
-                this.currentAdapter.renderAll(this.shapeManager.getAllData());
-
-                // [핵심 추가] 3. C++(로컬 DB)로 데이터 동기화 요청
-                this.syncToHost();
-                console.log("자동 저장 실행됨!");
+                if (type === 'marker') {
+                    // [수정] 마커일 경우 바로 저장하지 않고 C++에 텍스트 입력 요청
+                    if (window.mapBridge) {
+                        // 경도(lng), 위도(lat) 순서로 보냄
+                        console.log("connected mapBridge");
+                        window.mapBridge.onMarkerPositionSelected(
+                            geometry.coordinates[1], 
+                            geometry.coordinates[0],
+                            function() { console.log("C++ 슬롯 호출 완료"); }
+                        );
+                    }
+                } else {
+                    // 다른 도형들은 기존처럼 즉시 저장
+                    this.shapeManager.addShape(type, geometry);
+                    this.currentAdapter.renderAll(this.shapeManager.getAllData());
+                    this.syncToHost();
+                }
             },
             // 지도 로딩 완료 시 최초 1회 전체 렌더링
             onReady: () => {
@@ -51,6 +59,18 @@ const mapManager = {
                 console.log("DB 데이터 로드 및 초기 렌더링 완료");
             }
         });
+    },
+
+    addFinalMarkerWithLabel: function(lat, lng, text) {
+        const geometry = { coordinates: [lng, lat] };
+        const properties = { name: text }; 
+
+        this.shapeManager.addShape('marker', geometry, properties);
+        
+        if (this.currentAdapter && this.currentAdapter.isLoaded()) {
+            this.currentAdapter.renderAll(this.shapeManager.getAllData());
+        }
+        this.syncToHost();
     },
 
     // --- C++에서 호출하는 인터페이스 ---

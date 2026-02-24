@@ -28,11 +28,16 @@ signals:
     void requestGenerateHeatmapData();
     void requestHeatmapData();
     void heatmapDataReady(const QString& jsonData);
+    void requestTextInput(double lat, double lng);   //지정된 좌표에 대해 텍스트 입력을 요청하는 시그널
+
+public slots:
+    // JS -> C++: 사용자가 웹 지도에서 마커를 놓을 위치를 클릭했을 때 호출
+    void onMarkerPositionSelected(double lat, double lng);
 
 private:
     // 테스트용 좌표 변수
-    double currentLat;
-    double currentLng;
+    double currentLat = 0.0;
+    double currentLng = 0.0;
     UserAssetManager* m_assetManager = nullptr;
 };
 

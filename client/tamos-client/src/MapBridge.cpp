@@ -60,3 +60,8 @@ QString MapBridge::loadUserShapes()
 {
     return m_assetManager->loadShapes();
 }
+
+void MapBridge::onMarkerPositionSelected(double lat, double lng)
+{
+    emit requestTextInput(lat, lng);
+}

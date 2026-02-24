@@ -3,14 +3,20 @@
 #include <QDir>
 #include <QSqlError>
 
-UserAssetManager::UserAssetManager(QObject *parent) : QObject(parent) {}
+UserAssetManager::UserAssetManager(QObject *parent)
+    : QObject(parent)
+{
 
-bool UserAssetManager::initDatabase() {
+}
+
+bool UserAssetManager::initDatabase()
+{
     m_db = QSqlDatabase::addDatabase("QSQLITE");
 
     // Windows의 AppData/Local/mytamos_client 폴더 경로를 자동으로 찾음
     QString appDataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir dir(appDataPath);
+
     if (!dir.exists()) dir.mkpath("."); // 폴더가 없으면 생성
 
     QString dbPath = dir.filePath("user_assets.db");
@@ -27,12 +33,15 @@ bool UserAssetManager::initDatabase() {
                       "id TEXT PRIMARY KEY, "
                       "type TEXT, "
                       "geometry_json TEXT, "
+                      "properties_json TEXT, "
                       "style_json TEXT, "
                       "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)");
 }
 
-void UserAssetManager::saveShapes(const QString& jsonString) {
+void UserAssetManager::saveShapes(const QString& jsonString)
+{
     QJsonDocument doc = QJsonDocument::fromJson(jsonString.toUtf8());
+
     if (!doc.isArray()) return;
 
     QSqlDatabase::database().transaction();
@@ -42,31 +51,38 @@ void UserAssetManager::saveShapes(const QString& jsonString) {
     query.exec("DELETE FROM user_shapes");
 
     QJsonArray arr = doc.array();
-    for (const QJsonValue& val : arr) {
+
+    for(const QJsonValue& val : arr)
+    {
         QJsonObject obj = val.toObject();
-        query.prepare("INSERT INTO user_shapes (id, type, geometry_json, style_json) "
-                      "VALUES (:id, :type, :geom, :style)");
+        query.prepare("INSERT INTO user_shapes (id, type, geometry_json, properties_json, style_json) "
+                      "VALUES (:id, :type, :geom, :props, :style)");
         query.bindValue(":id", obj["id"].toString());
         query.bindValue(":type", obj["type"].toString());
         query.bindValue(":geom", QJsonDocument(obj["geometry"].toObject()).toJson(QJsonDocument::Compact));
+        query.bindValue(":props", QJsonDocument(obj["properties"].toObject()).toJson(QJsonDocument::Compact));
         query.bindValue(":style", QJsonDocument(obj["style"].toObject()).toJson(QJsonDocument::Compact));
         query.exec();
     }
+
     QSqlDatabase::database().commit();
 }
 
-QString UserAssetManager::loadShapes() {
+QString UserAssetManager::loadShapes()
+{
     QJsonArray rootArray;
-    QSqlQuery query("SELECT id, type, geometry_json, style_json FROM user_shapes");
+    QSqlQuery query("SELECT id, type, geometry_json, properties_json, style_json FROM user_shapes");
 
-    while (query.next()) {
+    while(query.next())
+    {
         QJsonObject obj;
         obj["id"] = query.value(0).toString();
         obj["type"] = query.value(1).toString();
 
         // 저장할 때 String으로 바꿨던 JSON들을 다시 Object로 복원
         obj["geometry"] = QJsonDocument::fromJson(query.value(2).toByteArray()).object();
-        obj["style"] = QJsonDocument::fromJson(query.value(3).toByteArray()).object();
+        obj["properties"] = QJsonDocument::fromJson(query.value(3).toByteArray()).object();
+        obj["style"] = QJsonDocument::fromJson(query.value(4).toByteArray()).object();
 
         rootArray.append(obj);
     }

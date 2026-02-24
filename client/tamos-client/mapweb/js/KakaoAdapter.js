@@ -32,6 +32,7 @@ class KakaoAdapter extends MapAdapter {
             this.drawingManager = new kakao.maps.drawing.DrawingManager({
                 map: this.map,
                 drawingMode: [
+                    kakao.maps.drawing.OverlayType.MARKER,
                     kakao.maps.drawing.OverlayType.CIRCLE,
                     kakao.maps.drawing.OverlayType.RECTANGLE,
                     kakao.maps.drawing.OverlayType.POLYGON
@@ -46,7 +47,13 @@ class KakaoAdapter extends MapAdapter {
                 // [핵심] 억지로 객체를 파싱하지 않고, 카카오가 제공하는 깔끔한 JSON 원본 데이터를 꺼내옵니다.
                 const drawnData = this.drawingManager.getData();
 
-                if (data.overlayType === kakao.maps.drawing.OverlayType.CIRCLE) {
+                // [신규 추가] 마커를 찍었을 때의 좌표 추출
+                if (data.overlayType === kakao.maps.drawing.OverlayType.MARKER) {
+                    type = 'marker';
+                    const pos = data.target.getPosition();
+                    geom = { coordinates: [pos.getLng(), pos.getLat()] }; 
+                }
+                else if (data.overlayType === kakao.maps.drawing.OverlayType.CIRCLE) {
                     type = 'circle';
                     const center = data.target.getPosition();
                     geom = {
@@ -164,7 +171,8 @@ class KakaoAdapter extends MapAdapter {
     startDrawing(type) {
         if (!this.drawingManager) return;
         let mode;
-        if (type === 'circle') mode = kakao.maps.drawing.OverlayType.CIRCLE;
+        if (type === 'marker') mode = kakao.maps.drawing.OverlayType.MARKER;
+        else if (type === 'circle') mode = kakao.maps.drawing.OverlayType.CIRCLE;
         else if (type === 'rectangle') mode = kakao.maps.drawing.OverlayType.RECTANGLE;
         else if (type === 'polygon') mode = kakao.maps.drawing.OverlayType.POLYGON;
 
@@ -199,7 +207,54 @@ class KakaoAdapter extends MapAdapter {
             } else if (shape.type === 'polygon') {
                 const path = shape.geometry.coordinates.map(c => new kakao.maps.LatLng(c[1], c[0]));
                 overlay = new kakao.maps.Polygon({ map: this.map, path: path, ...style });
+            } else if (shape.type === 'marker') {
+                const container = document.createElement('div');
+                container.className = 'custom-marker-container';
+                // [수정] Mapbox와 동일하게 Flexbox를 사용하여 아이콘과 텍스트를 세로로 예쁘게 정렬합니다.
+                container.style.display = 'flex';
+                container.style.flexDirection = 'column';  
+                container.style.alignItems = 'center';     
+
+                // 1. 아이콘 이미지
+                const img = document.createElement('img');
+                img.src = (shape.style && shape.style.icon) ? shape.style.icon : MapStyles.marker.defaultIcon;
+                // 크기 안전 장치 추가
+                const iconWidth = (typeof MapStyles !== 'undefined' && MapStyles.marker && MapStyles.marker.iconSize) ? MapStyles.marker.iconSize[0] : 32;
+                const iconHeight = (typeof MapStyles !== 'undefined' && MapStyles.marker && MapStyles.marker.iconSize) ? MapStyles.marker.iconSize[1] : 32;
+                img.style.width = iconWidth + 'px';
+                img.style.height = iconHeight + 'px';
+                container.appendChild(img);
+
+                // 2. 텍스트 라벨 (DB에 저장된 이름이 있을 경우)
+                const name = (shape.properties && shape.properties.name) ? shape.properties.name : shape.name;
+                if (name) {
+                    const label = document.createElement('div');
+                    label.innerText = name;
+                    // [수정] 가독성을 높이는 텍스트 박스 스타일링 적용
+                    label.style.marginTop = '4px'; 
+                    label.style.padding = '3px 6px';
+                    label.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+                    label.style.border = '1px solid #333';
+                    label.style.borderRadius = '4px';
+                    label.style.fontSize = '12px';
+                    label.style.fontWeight = 'bold';
+                    label.style.color = '#000';
+                    label.style.whiteSpace = 'nowrap';
+                    label.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+                    
+                    container.appendChild(label);
+                }
+
+                // 카카오 좌표계(위도, 경도 순)에 맞게 CustomOverlay 생성
+                overlay = new kakao.maps.CustomOverlay({
+                    position: new kakao.maps.LatLng(shape.geometry.coordinates[1], shape.geometry.coordinates[0]),
+                    content: container,
+                    map: this.map,
+                    yAnchor: 0.5, // 마커 중심축 설정
+                    zIndex: 4
+                });
             }
+
             if (overlay) this.renderedShapes.push(overlay);
         });
 

@@ -10,20 +10,28 @@ ApplicationWindow {
     visible: true
     title: "TAMOS Simulation System (Initial Build)"
 
+    property real currentMarkerLat: 0.0
+    property real currentMarkerLng: 0.0
+
     Connections {
         target: mapBridge
 
         function onUpdateMarker(id, lat, lng, type) {
-            console.log("QML received signal:", id, lat, lng);
-
-            // 지도 내부의 자바스크립트 함수 호출!
-            // runJavaScript는 웹페이지 내부 함수를 실행하는 열쇠입니다.
             mapContainer.runJavaScript("mapManager.updateMarker('" + id + "', " + lat + ", " + lng + ", '" + type + "');");
         }
 
         function onHeatmapDataReady(jsonData) {
-            var jsCommand = "mapManager.drawHeatmap(`" + jsonData + "`);"
-            mapContainer.runJavaScript(jsCommand)
+            mapContainer.runJavaScript("mapManager.drawHeatmap(`" + jsonData + "`);")
+        }
+
+        // MapBridge의 requestTextInput 시그널 수신
+        function onRequestTextInput(lat, lng) {
+            currentMarkerLat = lat
+            currentMarkerLng = lng
+
+            inputField.clear()
+            textInputPopup.open()
+            inputField.forceActiveFocus()
         }
     }
 
@@ -33,6 +41,7 @@ ApplicationWindow {
 
         WebChannel {
             id: qmlWebChannel
+
             // C++에서 ContextProperty로 등록한 mapBridge를 채널에 등록합니다.
             Component.onCompleted: {
                 qmlWebChannel.registerObject("mapBridge", mapBridge)
@@ -56,8 +65,7 @@ ApplicationWindow {
             layer.smooth: true
             backgroundColor: "transparent"
 
-            // 로컬 HTML 파일 로드 (실행 경로 기준)
-            //url: "file:///" + applicationDirPath + "/mapweb/index.html"
+            // 로컬 웹지도 서버 연결
             url: "http://127.0.0.1:5500/index.html"
             webChannel: qmlWebChannel
 
@@ -179,6 +187,68 @@ ApplicationWindow {
                     Text { text: model.lat; width: 100 }
                     Text { text: model.lon; width: 100 }
                     Text { text: model.time; width: 100 }
+                }
+            }
+        }
+    }
+
+    Popup {
+        id: textInputPopup
+        width: 320
+        height: 160
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        background: Rectangle {
+            color: "#ffffff"
+            radius: 8
+            border.color: "#e0e0e0"
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 20
+            spacing: 15
+
+            Label {
+                text: "마커에 표시할 텍스트 입력"
+                font.pixelSize: 16
+                font.bold: true
+            }
+
+            TextField {
+                id: inputField
+                Layout.fillWidth: true
+                placeholderText: "예: 도착지, 경유지 등"
+                onAccepted: sendButton.clicked()
+            }
+
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                spacing: 10
+
+                Button {
+                    text: "취소"
+                    onClicked: textInputPopup.close()
+                }
+
+                Button {
+                    id: sendButton
+                    text: "확인"
+                    highlighted: true
+                    onClicked: {
+                        let jsCode = "mapManager.addFinalMarkerWithLabel("
+                                     + currentMarkerLat + ", "
+                                     + currentMarkerLng + ", '"
+                                     + inputField.text + "');"
+
+                        mapContainer.runJavaScript(jsCode);
+
+                        textInputPopup.close();
+                        inputField.clear();
+                    }
                 }
             }
         }
