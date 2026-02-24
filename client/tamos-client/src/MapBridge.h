@@ -11,14 +11,22 @@ class MapBridge : public QObject
 public:
     explicit MapBridge(QObject *parent = nullptr);
 
-    // 버튼 누르면 드론 위치를 조금씩 이동시키는 함수
+    // 시뮬레이션 기능 테스트
     Q_INVOKABLE void simulateDroneMove();
     Q_INVOKABLE void startSimulation();
     Q_INVOKABLE void resetSimulation();
+
+    // 히트맵 기능 테스트
     Q_INVOKABLE void generateHeatmap();
     Q_INVOKABLE void drawHeatmap();
+
+    // 일반 그리기 도구 기능 테스트
     Q_INVOKABLE void saveUserShapes(const QString& json);
     Q_INVOKABLE QString loadUserShapes();
+
+    // 사용자 데이터 표출 기능 테스트
+    Q_INVOKABLE QString readTextFile(const QString& fileUrl);
+    Q_INVOKABLE void reportGeoJsonKeys(const QStringList& keys);
 
 signals:
     // QML로 보낼 신호: "이 ID를 가진 드론을 (lat, lng)으로 이동시켜라"
@@ -29,6 +37,7 @@ signals:
     void requestHeatmapData();
     void heatmapDataReady(const QString& jsonData);
     void requestTextInput(double lat, double lng);   //지정된 좌표에 대해 텍스트 입력을 요청하는 시그널
+    void geoJsonKeysReady(const QStringList& keys);
 
 public slots:
     // JS -> C++: 사용자가 웹 지도에서 마커를 놓을 위치를 클릭했을 때 호출

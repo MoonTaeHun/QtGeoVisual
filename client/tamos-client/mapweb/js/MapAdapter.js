@@ -19,4 +19,7 @@ class MapAdapter {
 
     // 상태 확인 함수
     isLoaded() { return this.isReady; }
+
+    set3DMode(enable) { throw new Error("Not implemented"); }
+    render3DGeoJson(geojsonData, heightKey)  { throw new Error("Not implemented"); }
 }

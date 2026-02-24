@@ -99,6 +99,9 @@ class KakaoAdapter extends MapAdapter {
 
             // 초기화 완료 콜백
             if (this.callbacks.onReady) this.callbacks.onReady();
+            if (this.callbacks && typeof this.callbacks.onLoad === 'function') {
+                this.callbacks.onLoad(); 
+            }
         });
     }
 
@@ -245,6 +248,36 @@ class KakaoAdapter extends MapAdapter {
                     container.appendChild(label);
                 }
 
+                // [신규 추가] 3. 지도 영역 내 평점 미니 그래프 표출
+                try {
+                    if (shape.properties && shape.properties['평점']) {
+                        const rating = parseFloat(shape.properties['평점']);
+                        const percentage = Math.min(100, Math.max(0, (rating / 5.0) * 100));
+
+                        if (!isNaN(rating)) {
+                            const barBg = document.createElement('div');
+                            barBg.style.width = '60px';
+                            barBg.style.height = '8px';
+                            barBg.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+                            barBg.style.border = '1px solid #555';
+                            barBg.style.borderRadius = '4px';
+                            barBg.style.marginTop = '4px';
+                            barBg.style.overflow = 'hidden';
+                            barBg.style.boxShadow = '0 1px 3px rgba(0,0,0,0.4)';
+
+                            const barFill = document.createElement('div');
+                            barFill.style.width = percentage + '%';
+                            barFill.style.height = '100%';
+                            barFill.style.backgroundColor = '#ff9800'; 
+
+                            barBg.appendChild(barFill);
+                            container.appendChild(barBg);
+                        }
+                    }
+                } catch (e) {
+                    console.error("그래프 생성 중 에러 발생 (지도 멈춤 방지):", e);
+                }
+
                 // 카카오 좌표계(위도, 경도 순)에 맞게 CustomOverlay 생성
                 overlay = new kakao.maps.CustomOverlay({
                     position: new kakao.maps.LatLng(shape.geometry.coordinates[1], shape.geometry.coordinates[0]),
@@ -311,5 +344,85 @@ class KakaoAdapter extends MapAdapter {
 
         this.heatmapInstance.setData({ max: 150, data: points });
         this.heatmapContainer.style.opacity = '1';
+    }
+
+    set3DMode(enable) {
+        alert("3D 입체 뷰 기능은 맵박스(Mapbox) 엔진에서만 지원됩니다.\nMapBox 엔진으로 스위칭 후 사용해주세요.");
+    }
+
+    render3DGeoJson(geojsonData, heightKey) {
+        try {
+            if (!this.map) return;
+
+            // 1. 기존 폴리곤 초기화
+            if (this.statsPolygons && this.statsPolygons.length > 0) {
+                this.statsPolygons.forEach(p => p.setMap(null));
+            }
+            this.statsPolygons = [];
+
+            const getColor = (val) => {
+                const num = Number(val) || 0;
+                if (num >= 150000) return '#f03b20';
+                if (num >= 100000) return '#fd8d3c';
+                if (num >= 50000)  return '#ffeda0';
+                if (num >= 25000)  return '#9ebcda';
+                return '#3182bd';
+            };
+
+            // 2. 다각형 그리기
+            geojsonData.features.forEach(feature => {
+                const geom = feature.geometry;
+                if (!geom) return;
+                
+                const val = feature.properties[heightKey];
+                const fillColor = getColor(val);
+
+                const drawPolygon = (coords) => {
+                    if (!coords || !coords[0]) return;
+                    // 카카오 LatLng 규격에 맞게 [lat, lng] 로 변환
+                    const path = coords[0].map(coord => new kakao.maps.LatLng(coord[1], coord[0]));
+
+                    const polygon = new kakao.maps.Polygon({
+                        path: path,
+                        strokeWeight: 2,
+                        strokeColor: '#ffffff',
+                        strokeOpacity: 0.8,
+                        fillColor: fillColor,
+                        fillOpacity: 0.7
+                    });
+
+                    polygon.setMap(this.map);
+                    this.statsPolygons.push(polygon);
+                };
+
+                if (geom.type === 'Polygon') {
+                    drawPolygon(geom.coordinates);
+                } else if (geom.type === 'MultiPolygon') {
+                    geom.coordinates.forEach(polygonCoords => {
+                        drawPolygon(polygonCoords);
+                    });
+                }
+            });
+
+            // 3. 중심 이동 로직 방어막 추가 (Polygon / MultiPolygon 모두 지원)
+            if (geojsonData.features.length > 0) {
+                let firstFeature = geojsonData.features[0];
+                let coords = firstFeature.geometry.coordinates;
+                
+                // MultiPolygon이면 한 단계 더 들어감
+                if (firstFeature.geometry.type === 'MultiPolygon') {
+                    coords = coords[0];
+                }
+                
+                // 유효한 좌표가 있을 때만 이동
+                if (coords && coords[0] && coords[0][0]) {
+                    this.map.panTo(new kakao.maps.LatLng(coords[0][0][1], coords[0][0][0]));
+                }
+            }
+            
+            console.log("카카오맵 통계 폴리곤 렌더링 성공!");
+        } catch (e) {
+            console.error("카카오맵 렌더링 에러 발생:", e);
+        }
     }
 }

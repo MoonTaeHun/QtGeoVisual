@@ -1,0 +1,57 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [126.9706, 37.5546]
+      },
+      "properties": {
+        "상호명": "타모스 커피 서울역점",
+        "업종": "카페",
+        "평점": "4.8",
+        "설립연도": "2024"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [126.9779, 37.5663]
+      },
+      "properties": {
+        "상호명": "시청역 우동집",
+        "업종": "음식점",
+        "평점": "4.5",
+        "설립연도": "2023"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [126.9768, 37.5759]
+      },
+      "properties": {
+        "상호명": "광화문 대형 서점",
+        "업종": "소매점",
+        "평점": "4.9",
+        "설립연도": "2010"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [126.9822, 37.5701]
+      },
+      "properties": {
+        "상호명": "종각 베이커리",
+        "업종": "제과점",
+        "평점": "4.6",
+        "설립연도": "2025"
+      }
+    }
+  ]
+}

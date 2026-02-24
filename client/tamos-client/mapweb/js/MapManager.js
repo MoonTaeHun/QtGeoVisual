@@ -2,6 +2,10 @@ window.mapManager = {
     shapeManager: new ShapeManager(),
     currentAdapter: null,
     containerId: '',
+    tempGeoJsonData: null,
+    statsGeoJsonData: null,
+    statsHeightKey: null,
+    is3DMode: false,
 
     init: function(containerId, center) {
         this.containerId = containerId;
@@ -32,6 +36,24 @@ window.mapManager = {
 
         // 어댑터 초기화 및 콜백 연결
         this.currentAdapter.init(this.containerId, viewState, {
+            onLoad: () => {
+                // 1. 기존 사용자가 그린 도형 및 마커 복구 (기존에 있던 코드)
+                if (typeof this.currentAdapter.renderAll === 'function') {
+                    this.currentAdapter.renderAll(this.shapeManager.getAllData());
+                }
+
+                // 2. [신규 추가] 통계 폴리곤 데이터가 메모리에 남아있다면, 새 엔진에 맞춰서 다시 그려줌!
+                if (this.statsGeoJsonData && this.statsHeightKey) {
+                    if (typeof this.currentAdapter.render3DGeoJson === 'function') {
+                        this.currentAdapter.render3DGeoJson(this.statsGeoJsonData, this.statsHeightKey);
+                        if (engineType === 'mapbox') this.is3DMode = true;
+                    }
+                }
+
+                if (engineType === 'mapbox' && this.is3DMode && typeof this.currentAdapter.set3DMode === 'function') {
+                    this.currentAdapter.set3DMode(true);
+                }
+            },
             // 그리기 완료 시 Model에 저장 후 전체 화면 갱신
             onShapeDrawn: (type, geometry) => {
                 if (type === 'marker') {
@@ -152,6 +174,92 @@ window.mapManager = {
         } else {
             console.warn("mapBridge 객체를 찾을 수 없어 0.5초 후 재시도합니다.");
             setTimeout(() => this.syncToHost(), 500);
+        }
+    },
+
+    // 1. QML(runJavaScript) -> JS: 전달받은 문자열 분석
+    analyzeGeoJson: function(geojsonString) {
+        try {
+            const data = JSON.parse(geojsonString);
+            this.tempGeoJsonData = data;
+
+            let keys = new Set();
+            // 모든 피처(Feature)의 properties 안의 키(Key)들을 수집
+            if (data.features) {
+                data.features.forEach(f => {
+                    if (f.properties) {
+                        Object.keys(f.properties).forEach(k => keys.add(k));
+                    }
+                });
+            }
+
+            // 추출한 키들을 배열로 변환하여 C++로 전달 (JS -> C++)
+            if (window.mapBridge) {
+                // [수정] WebChannel이 통신 ID를 생성할 수 있도록 마지막 인자에 빈 콜백 함수를 추가합니다.
+                window.mapBridge.reportGeoJsonKeys(Array.from(keys), function() {
+                    console.log("C++로 키 목록 전송 완료 및 ID 생성 성공!");
+                });
+            }
+        } catch (e) {
+            console.error("GeoJSON 분석 에러:", e);
+            alert("유효한 GeoJSON 파일이 아닙니다.");
+        }
+    },
+
+    // 2. QML(runJavaScript) -> JS: 사용자가 선택한 키(Key)로 매핑하여 지도에 렌더링
+    applyGeoJsonMapping: function(selectedKey) {
+        if (!this.tempGeoJsonData || !this.tempGeoJsonData.features) return;
+
+        this.tempGeoJsonData.features.forEach(f => {
+            const geom = f.geometry;
+            if (!geom) return;
+
+            // 일단 Point(마커) 데이터에 대해서만 테스트 적용
+            if (geom.type === 'Point') {
+                // 사용자가 선택한 Key를 이용해 properties에서 텍스트를 빼옵니다.
+                const mappedText = f.properties[selectedKey] || "이름없음";
+                const lng = geom.coordinates[0];
+                const lat = geom.coordinates[1];
+
+                // [수정 핵심] 기존 properties 데이터를 모두 복사하고, 표출할 name 속성만 덮어씌웁니다.
+                const mergedProperties = Object.assign({}, f.properties, { name: mappedText });
+                
+                // ShapeManager에 추가
+                this.shapeManager.addShape('marker', 
+                    { coordinates: [lng, lat] }, 
+                    mergedProperties
+                );
+            } else if (geom.type === 'Polygon' || geom.type === 'MultiPolygon') {
+                hasPolygons = true;
+            }
+        });
+
+        // 폴리곤 데이터가 있다면 어댑터의 3D 렌더링 특수 함수 호출
+        if (hasPolygons) {
+            this.statsGeoJsonData = this.tempGeoJsonData;
+            this.statsHeightKey = selectedKey;
+        }
+
+        // [수정] 1. 기존 마커와 도형을 먼저 렌더링합니다. (여기서 화면을 한 번 싹 지웁니다)
+        if (this.currentAdapter && this.currentAdapter.isLoaded()) {
+            this.currentAdapter.renderAll(this.shapeManager.getAllData());
+        }
+
+        // [수정] 2. 지워진 도화지 위에 통계 폴리곤을 마지막에 렌더링합니다! (안전하게 생존)
+        if (hasPolygons && this.currentAdapter && typeof this.currentAdapter.render3DGeoJson === 'function') {
+            this.currentAdapter.render3DGeoJson(this.statsGeoJsonData, this.statsHeightKey);
+        }
+        
+        // 메모리 정리 및 DB 저장
+        this.tempGeoJsonData = null;
+        this.syncToHost(); 
+    },
+    
+    // [수정] 3D 토글 함수: 상태를 전역 변수에 저장하고 어댑터에 전달
+    toggle3D: function() {
+        this.is3DMode = !this.is3DMode; // 상태 반전
+        if (this.currentAdapter && typeof this.currentAdapter.set3DMode === 'function') {
+            this.currentAdapter.set3DMode(this.is3DMode);
         }
     }
 };

@@ -1,7 +1,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtWebEngine // WebEngine 모듈 임포트
+import QtQuick.Dialogs
+import QtWebEngine
 import QtWebChannel
 
 ApplicationWindow {
@@ -24,7 +25,6 @@ ApplicationWindow {
             mapContainer.runJavaScript("mapManager.drawHeatmap(`" + jsonData + "`);")
         }
 
-        // MapBridge의 requestTextInput 시그널 수신
         function onRequestTextInput(lat, lng) {
             currentMarkerLat = lat
             currentMarkerLng = lng
@@ -32,6 +32,12 @@ ApplicationWindow {
             inputField.clear()
             textInputPopup.open()
             inputField.forceActiveFocus()
+        }
+
+        function onGeoJsonKeysReady(keys) {
+            mappingComboBox.model = keys
+            if (keys.length > 0) mappingComboBox.currentIndex = 0
+            mappingPopup.open()
         }
     }
 
@@ -138,21 +144,39 @@ ApplicationWindow {
                     text: "원 그리기"
                     onClicked: mapContainer.runJavaScript("mapManager.startDrawing('circle');")
                 }
+
                 Button {
                     text: "사각형 그리기"
                     onClicked: mapContainer.runJavaScript("mapManager.startDrawing('rectangle');")
                 }
+
                 Button {
                     text: "다각형 그리기"
                     onClicked: mapContainer.runJavaScript("mapManager.startDrawing('polygon');")
                 }
+
                 Button {
                     text: "아이콘 찍기"
                     onClicked: mapContainer.runJavaScript("mapManager.startDrawing('marker');")
                 }
+
                 Button {
                     text: "그리기 취소"
                     onClicked: mapContainer.runJavaScript("mapManager.stopDrawing();")
+                }
+
+                Button {
+                    text: "GeoJSON 로드"
+                    onClicked: {
+                        importDialog.open()
+                    }
+                }
+
+                Button {
+                    text: "3D 뷰어 (Mapbox)"
+                    onClicked: {
+                        mapContainer.runJavaScript("mapManager.toggle3D();")
+                    }
                 }
             }
         }
@@ -189,6 +213,23 @@ ApplicationWindow {
                     Text { text: model.time; width: 100 }
                 }
             }
+        }
+    }
+
+    FileDialog {
+        id: importDialog
+        title: "GeoJSON 파일 선택"
+        nameFilters: ["GeoJSON files (*.geojson)", "JSON files (*.json)", "All files (*)"]
+        onAccepted: {
+            // 1. C++을 통해 로컬 파일을 문자열로 읽음
+            let fileContent = mapBridge.readTextFile(importDialog.selectedFile.toString())
+
+            // 2. JS로 넘겨서 분석(키 추출) 요청
+            // 역슬래시나 따옴표 등 이스케이프 처리가 필요할 수 있으므로,
+            // 안전하게 데이터를 넘기기 위해 C++에서 처리하거나 Base64 인코딩을 쓰기도 하지만,
+            // 우선 템플릿 리터럴(backtick)로 던집니다.
+            let safeContent = fileContent.replace(/`/g, "\\`").replace(/\$/g, "\\$")
+            mapContainer.runJavaScript("mapManager.analyzeGeoJson(`" + safeContent + "`);")
         }
     }
 
@@ -248,6 +289,64 @@ ApplicationWindow {
 
                         textInputPopup.close();
                         inputField.clear();
+                    }
+                }
+            }
+        }
+    }
+
+    // 속성 매핑 팝업
+    Popup {
+        id: mappingPopup
+        width: 300
+        height: 200
+        anchors.centerIn: Overlay.overlay
+        modal: true
+
+        background: Rectangle {
+            color: "#ffffff"
+            radius: 8
+            border.color: "#e0e0e0"
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 20
+            spacing: 15
+
+            Label {
+                text: "표출할 텍스트 속성 선택"
+                font.pixelSize: 16
+                font.bold: true
+            }
+
+            ComboBox {
+                id: mappingComboBox
+                Layout.fillWidth: true
+                // model은 JS에서 넘어온 keys 배열로 동적 채워짐
+            }
+
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                spacing: 10
+
+                Button {
+                    text: "취소"
+                    onClicked: {
+                        mappingPopup.close()
+                        // JS측 임시 데이터 초기화 호출
+                        mapContainer.runJavaScript("mapManager.tempGeoJsonData = null;")
+                    }
+                }
+
+                Button {
+                    text: "적용"
+                    highlighted: true
+                    onClicked: {
+                        // 3. 선택한 Key 값을 JS로 넘겨 최종 렌더링 명령
+                        let selectedKey = mappingComboBox.currentText
+                        mapContainer.runJavaScript("mapManager.applyGeoJsonMapping('" + selectedKey + "');")
+                        mappingPopup.close()
                     }
                 }
             }

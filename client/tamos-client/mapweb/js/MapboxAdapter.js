@@ -12,6 +12,17 @@ class MapboxAdapter extends MapAdapter {
         this.renderedShapeMarkers = [];
     }
 
+    // [신규 추가] 맵박스가 퇴장할 때 이벤트 리스너 찌꺼기를 완벽하게 청소합니다!
+    destroy() {
+        if (this.map) {
+            // Mapbox API의 공식 클린업 함수: 모든 드래그 및 클릭 이벤트를 해제함
+            this.map.remove(); 
+            this.map = null;
+        }
+        // 부모 클래스(MapAdapter)의 기본 파괴 로직(innerHTML = "") 호출
+        super.destroy(); 
+    }
+
     init(containerId, viewState, callbacks) {
         this.callbacks = callbacks;
         mapboxgl.accessToken = 'pk.eyJ1IjoibWF5YmU4MzE0IiwiYSI6ImNtbGs4ZHhrYzAzcmIzZnNkNGFkaThqd3MifQ.DRDOAE4bq1G2TgMDmcxVSQ';
@@ -20,7 +31,8 @@ class MapboxAdapter extends MapAdapter {
             container: containerId,
             style: 'mapbox://styles/mapbox/streets-v12',
             center: [viewState.center.lng, viewState.center.lat],
-            zoom: viewState.zoom
+            zoom: viewState.zoom,
+            antialias: true
         });
 
         this.map.on('load', () => {
@@ -120,6 +132,10 @@ class MapboxAdapter extends MapAdapter {
             if (this.callbacks && this.callbacks.onReady) {
                 this.callbacks.onReady();
             }
+
+            if (this.callbacks && typeof this.callbacks.onLoad === 'function') {
+                this.callbacks.onLoad();
+            }
         });
     }
 
@@ -193,6 +209,38 @@ class MapboxAdapter extends MapAdapter {
                             label.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
                             
                             el.appendChild(label);
+                        }
+
+                        // [신규 추가] 4. 지도 영역 내 평점 미니 그래프 표출
+                        try {
+                            if (shape.properties && shape.properties['평점']) {
+                                const rating = parseFloat(shape.properties['평점']);
+                                const percentage = Math.min(100, Math.max(0, (rating / 5.0) * 100)); // 5.0 만점 기준 % 계산
+
+                                // 그래프 겉 테두리(배경)
+                                if (!isNaN(rating)) {
+                                    const barBg = document.createElement('div');
+                                    barBg.style.width = '60px'; // 그래프 전체 너비
+                                    barBg.style.height = '8px'; // 그래프 두께
+                                    barBg.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+                                    barBg.style.border = '1px solid #555';
+                                    barBg.style.borderRadius = '4px';
+                                    barBg.style.marginTop = '4px'; // 텍스트와의 간격
+                                    barBg.style.overflow = 'hidden';
+                                    barBg.style.boxShadow = '0 1px 3px rgba(0,0,0,0.4)';
+
+                                    // 그래프 채우기 (평점만큼 너비 조절)
+                                    const barFill = document.createElement('div');
+                                    barFill.style.width = percentage + '%';
+                                    barFill.style.height = '100%';
+                                    barFill.style.backgroundColor = '#ff9800'; // 주황색/노란색 계열
+
+                                    barBg.appendChild(barFill);
+                                    el.appendChild(barBg); // 마커 컨테이너에 그래프 추가
+                                }
+                            }
+                        } catch (e) {
+                            console.error("그래프 생성 중 에러 발생 (지도 멈춤 방지):", e);
                         }
 
                         // 4. 마커 등록
@@ -397,5 +445,92 @@ class MapboxAdapter extends MapAdapter {
             center: { lat: center.lat, lng: center.lng }, 
             zoom: this.map.getZoom() 
         };
+    }
+
+    set3DMode(enable) {
+        if (!this.map) return;
+
+        if (enable) {
+            this.map.easeTo({ pitch: 60, bearing: -20, duration: 1000 });
+            if (!this.map.getLayer('3d-buildings')) {
+                this.map.addLayer({
+                    'id': '3d-buildings',
+                    'source': 'composite',
+                    'source-layer': 'building',
+                    'filter': ['==', 'extrude', 'true'],
+                    'type': 'fill-extrusion',
+                    'minzoom': 14,
+                    'paint': {
+                        'fill-extrusion-color': '#e0e0e0',
+                        'fill-extrusion-height': ['get', 'height'],
+                        'fill-extrusion-base': ['get', 'min_height'],
+                        'fill-extrusion-opacity': 0.8
+                    }
+                });
+            } else {
+                this.map.setLayoutProperty('3d-buildings', 'visibility', 'visible');
+            }
+        } else {
+            this.map.easeTo({ pitch: 0, bearing: 0, duration: 1000 });
+            if (this.map.getLayer('3d-buildings')) {
+                this.map.setLayoutProperty('3d-buildings', 'visibility', 'none');
+            }
+        }
+    }
+
+    // [신규] 통계 데이터 기반 3D 폴리곤 돌출 렌더링
+    render3DGeoJson(geojsonData, heightKey) {
+        if (!this.map) return;
+
+        const sourceId = 'custom-3d-source';
+        const layerId = 'custom-3d-layer';
+
+        // 1. 데이터 소스 추가 또는 업데이트
+        if (!this.map.getSource(sourceId)) {
+            this.map.addSource(sourceId, {
+                'type': 'geojson',
+                'data': geojsonData
+            });
+        } else {
+            this.map.getSource(sourceId).setData(geojsonData);
+        }
+
+        // 2. 3D 돌출 레이어 추가 또는 조건 업데이트
+        if (!this.map.getLayer(layerId)) {
+            this.map.addLayer({
+                'id': layerId,
+                'type': 'fill-extrusion',
+                'source': sourceId,
+                'paint': {
+                    // 높이에 따라 색상을 다르게 표현 (낮음:파란색 -> 중간:노란색 -> 높음:빨간색)
+                    'fill-extrusion-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['to-number', ['get', heightKey]], // 문자열이 섞여 있을까봐 강제로 숫자로 변환
+                        0, '#3182bd',
+                        50000, '#ffeda0',
+                        150000, '#f03b20'
+                    ],
+                    // 수치값을 높이(m)로 변환 (예: 10만명 -> 2,000m 높이로 스케일링)
+                    'fill-extrusion-height': ['*', ['to-number', ['get', heightKey]], 0.02],
+                    'fill-extrusion-base': 0,
+                    'fill-extrusion-opacity': 0.8
+                }
+            });
+        } else {
+            // 이미 레이어가 존재하면 사용자가 선택한 새로운 Key에 맞춰 높이와 색상 재계산
+            this.map.setPaintProperty(layerId, 'fill-extrusion-height', ['*', ['to-number', ['get', heightKey]], 0.02]);
+            this.map.setPaintProperty(layerId, 'fill-extrusion-color', [
+                'interpolate',
+                ['linear'],
+                ['to-number', ['get', heightKey]],
+                0, '#3182bd',
+                50000, '#ffeda0',
+                150000, '#f03b20'
+            ]);
+        }
+
+        // 3D 효과를 잘 볼 수 있도록 카메라 기울이기 및 지형 중심으로 이동
+        this.map.easeTo({ pitch: 60, bearing: -20, duration: 1500 });
     }
 }

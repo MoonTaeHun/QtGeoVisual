@@ -4,11 +4,12 @@ class ShapeManager {
         this.markers = {};   // { id: { lat, lng } }
         this.paths = {};     // { id: [{lat, lng}, ...] }
         this.heatmap = [];   // [{lat, lng, weight}]
+        this.nextId = 1;
     }
 
     addShape(type, geometry, properties = {}, style = null) {
         const shape = {
-            id: 'shape-' + Date.now(),
+            id: 'shape-' + Date.now() + '-' + (this.nextId++),
             type: type,
             geometry: geometry, // circle: {center, radius}, bbox: [minX,minY,maxX,maxY], polygon: [[lng,lat]...]
             properties: properties, // [핵심] 여기서 데이터를 저장해야 합니다!

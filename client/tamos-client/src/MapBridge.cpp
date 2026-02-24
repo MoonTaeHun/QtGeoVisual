@@ -1,4 +1,7 @@
 #include "MapBridge.h"
+#include <QFile>
+#include <QUrl>
+#include <QTextStream>
 
 MapBridge::MapBridge(QObject *parent)
     : QObject(parent), currentLat(37.5546), currentLng(126.9706) // 서울역 초기값
@@ -59,6 +62,27 @@ void MapBridge::saveUserShapes(const QString& json)
 QString MapBridge::loadUserShapes()
 {
     return m_assetManager->loadShapes();
+}
+
+QString MapBridge::readTextFile(const QString& fileUrl) {
+    // QML의 FileDialog가 주는 경로는 보통 "file:///" 로 시작하므로 이를 로컬 경로로 변환
+    QUrl url(fileUrl);
+    QString localPath = url.isLocalFile() ? url.toLocalFile() : fileUrl;
+
+    QFile file(localPath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qWarning() << "파일 열기 실패:" << localPath;
+        return "";
+    }
+    QTextStream in(&file);
+    in.setEncoding(QStringConverter::Utf8); // 한글 깨짐 방지
+    return in.readAll();
+}
+
+// [신규] JS가 던져준 키 목록을 QML로 토스
+void MapBridge::reportGeoJsonKeys(const QStringList& keys) {
+    qDebug() << "GeoJSON 추출된 속성 키:" << keys;
+    emit geoJsonKeysReady(keys);
 }
 
 void MapBridge::onMarkerPositionSelected(double lat, double lng)
