@@ -10,10 +10,17 @@ class MapboxAdapter extends MapAdapter {
         this.previewFeature = null;
         this.domMarkers = {};
         this.renderedShapeMarkers = [];
+
+        this.isPaused = false;
     }
 
     // [신규 추가] 맵박스가 퇴장할 때 이벤트 리스너 찌꺼기를 완벽하게 청소합니다!
     destroy() {
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
+
         if (this.map) {
             // Mapbox API의 공식 클린업 함수: 모든 드래그 및 클릭 이벤트를 해제함
             this.map.remove(); 
@@ -532,5 +539,222 @@ class MapboxAdapter extends MapAdapter {
 
         // 3D 효과를 잘 볼 수 있도록 카메라 기울이기 및 지형 중심으로 이동
         this.map.easeTo({ pitch: 60, bearing: -20, duration: 1500 });
+    }
+
+    showSimulationFlow(simData, layerType) {
+        if (!this.map) return;
+
+        // 1. 공통 초기화: 기존 애니메이션 강제 종료 및 모든 시뮬레이션 관련 레이어 삭제
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
+        
+        // 등록된 모든 시뮬레이션 관련 레이어 ID 리스트
+        const allLayerIds = ['sim-trips-layer', 'sim-arc-layer', 'sim-path-layer'];
+        
+        // 지도에서 해당 레이어들을 모두 제거
+        allLayerIds.forEach(id => {
+            if (this.map.getLayer(id)) {
+                this.map.removeLayer(id);
+            }
+        });
+
+        // 🔥 [추가] layerType이 'None'이거나 유효하지 않으면 여기서 종료 (화면 초기화)
+        if (!layerType || layerType === 'None' || layerType === '') {
+            console.log("모든 시뮬레이션 레이어가 제거되었습니다.");
+            return; 
+        }
+
+        // ====================================================
+        // 옵션 1: ArcLayer (출발지 ➔ 도착지 포물선)
+        // 거시적인 OD(기종점) 연결성을 볼 때 유리합니다.
+        // ====================================================
+        if (layerType === 'ArcLayer') {
+            const arcData = simData.map(d => ({
+                source: d.path[0],                         // 출발지 좌표
+                target: d.path[d.path.length - 1],         // 도착지 좌표
+                color: d.color
+            }));
+
+            const arcLayer = new deck.MapboxLayer({
+                id: 'sim-arc-layer',
+                type: deck.ArcLayer,
+                data: arcData,
+                getSourcePosition: d => d.source,
+                getTargetPosition: d => d.target,
+                getSourceColor: d => d.color,
+                getTargetColor: [255, 255, 255, 200], // 목적지는 하얀색으로 그라데이션
+                getWidth: 3,
+                getHeight: 0.5,
+                getTilt: 15
+            });
+
+            this.map.addLayer(arcLayer);
+            this.map.easeTo({ pitch: 45, bearing: -10, zoom: 11.5, center: [126.98, 37.53], duration: 1500 });
+            console.log("ArcLayer 렌더링 완료");
+        }
+
+        // ====================================================
+        // 옵션 2: PathLayer (실도로 주행 궤적 선)
+        // 실제 어떤 도로망과 교차로를 이용했는지 분석할 때 유리합니다.
+        // ====================================================
+        else if (layerType === 'PathLayer') {
+            const pathLayer = new deck.MapboxLayer({
+                id: 'sim-path-layer',
+                type: deck.PathLayer,
+                data: simData,
+                getPath: d => d.path,
+                getColor: d => d.color,
+                getWidth: 10,           // 선 두께(미터)
+                widthMinPixels: 3,
+                jointRounded: true,
+                capRounded: true,
+                opacity: 0.7,
+                parameters: { depthTest: false }
+            });
+
+            this.map.addLayer(pathLayer);
+            // 도로망이 잘 보이도록 지도를 평면에 가깝게(pitch: 20) 내려다봅니다.
+            this.map.easeTo({ pitch: 20, bearing: 0, zoom: 11.5, center: [126.98, 37.53], duration: 1500 });
+            console.log("PathLayer 렌더링 완료");
+        }
+
+        // ====================================================
+        // 옵션 3: TripsLayer (실도로 주행 빛줄기 애니메이션)
+        // 배차 알고리즘의 동적인 움직임과 시간차를 볼 때 유리합니다.
+        // ====================================================
+        else if (layerType === 'TripsLayer') {
+            const VEHICLE_SPEED = 0.0003; 
+            
+            simData.forEach(trip => {
+                if (trip.path && trip.path.length >= 2) {
+                    let currentTime = trip.timestamps[0]; 
+                    const newTimestamps = [currentTime];
+                    for (let i = 1; i < trip.path.length; i++) {
+                        const prev = trip.path[i - 1];
+                        const curr = trip.path[i];
+                        const dx = curr[0] - prev[0];
+                        const dy = curr[1] - prev[1];
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        currentTime += (distance / VEHICLE_SPEED);
+                        newTimestamps.push(currentTime);
+                    }
+                    trip.timestamps = newTimestamps; 
+                }
+            });
+
+            // [추가] 데이터 유효성 검사 및 null 제거
+            const sanitizedData = simData.filter(trip => {
+                // path나 timestamps가 null인 객체는 아예 제외
+                if (!trip.path || !trip.timestamps) return false;
+                
+                // timestamps 내부에 null이나 NaN이 있는지 검사
+                const hasInvalidTime = trip.timestamps.some(t => t === null || isNaN(t));
+                if (hasInvalidTime) {
+                    console.warn("유효하지 않은 타임스탬프가 발견되어 제외됨:", trip);
+                    return false;
+                }
+                return true;
+            });
+
+            let maxTime = 0;
+            simData.forEach(d => {
+                if (d.timestamps && d.timestamps.length > 0) {
+                    const lastTime = d.timestamps[d.timestamps.length - 1];
+                    if (lastTime > maxTime) maxTime = lastTime;
+                }
+            });
+            maxTime += 150; 
+            this.currentTripTime = 0; 
+
+            const tripsLayer = new deck.MapboxLayer({
+                id: 'sim-trips-layer',
+                type: deck.TripsLayer,
+                data: simData, 
+                getPath: d => d.path,
+                getTimestamps: d => d.timestamps,
+                getColor: d => d.color,
+                opacity: 0.9,
+                widthMinPixels: 4,
+                jointRounded: true,  // 경로가 꺾이는 지점(관절)을 둥글게 처리
+                capRounded: true,    // 선의 시작과 끝부분(캡)을 둥글게 처리
+                trailLength: 120,
+                currentTime: this.currentTripTime,
+                parameters: { depthTest: false },
+                pickable: true, // 마우스 반응 활성화
+                onHover: info => this.updateTooltip(info) // 호버 시 함수 호출
+            });
+
+            this.map.addLayer(tripsLayer);
+            this.map.easeTo({ pitch: 55, bearing: -15, zoom: 11.5, center: [126.98, 37.53], duration: 1500 });
+
+            const animate = () => {
+                if (!this.isPaused) {
+                    this.currentTripTime += 2; 
+                }
+
+                if (this.currentTripTime >= maxTime) {
+                    this.currentTripTime = 0;
+                    tripsLayer.setProps({ currentTime: this.currentTripTime });
+                    this.map.triggerRepaint(); 
+                    setTimeout(() => {
+                        this.animationId = requestAnimationFrame(animate);
+                    }, 100);
+                } else {
+                    tripsLayer.setProps({ currentTime: this.currentTripTime });
+                    this.map.triggerRepaint(); 
+                    this.animationId = requestAnimationFrame(animate);
+                }
+            };
+            animate();
+            console.log("TripsLayer 애니메이션 렌더링 완료");
+        }
+    }
+
+    // [추가] 툴팁 생성 및 업데이트 함수
+    updateTooltip(info) {
+        const {x, y, object} = info;
+        let tooltip = document.getElementById('map-tooltip');
+
+        // 툴팁 엘리먼트가 없으면 생성
+        if (!tooltip) {
+            tooltip = document.createElement('div');
+            tooltip.id = 'map-tooltip';
+            tooltip.style.position = 'absolute';
+            tooltip.style.zIndex = '1000';
+            tooltip.style.pointerEvents = 'none';
+            tooltip.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+            tooltip.style.color = 'white';
+            tooltip.style.padding = '8px';
+            tooltip.style.borderRadius = '4px';
+            tooltip.style.fontSize = '12px';
+            tooltip.style.fontFamily = 'sans-serif';
+            tooltip.style.display = 'none';
+            document.body.appendChild(tooltip);
+        }
+
+        if (object) {
+            // 마우스가 차량 위에 있을 때 정보 표시
+            const startPos = object.path[0];
+            const endPos = object.path[object.path.length - 1];
+            
+            tooltip.style.display = 'block';
+            tooltip.style.left = `${x + 15}px`;
+            tooltip.style.top = `${y + 15}px`;
+            tooltip.innerHTML = `
+                <b>차량 정보</b><br/>
+                노드 수: ${object.path.length}개<br/>
+                출발지: ${startPos[0].toFixed(4)}, ${startPos[1].toFixed(4)}<br/>
+                목적지: ${endPos[0].toFixed(4)}, ${endPos[1].toFixed(4)}
+            `;
+        } else {
+            // 마우스가 벗어나면 숨김
+            tooltip.style.display = 'none';
+        }
+    }
+
+    setAnimationPause(paused) {
+        this.isPaused = paused;
     }
 }

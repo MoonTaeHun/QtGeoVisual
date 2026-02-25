@@ -255,11 +255,37 @@ window.mapManager = {
         this.syncToHost(); 
     },
     
-    // [수정] 3D 토글 함수: 상태를 전역 변수에 저장하고 어댑터에 전달
+    // 3D 토글 함수: 상태를 전역 변수에 저장하고 어댑터에 전달
     toggle3D: function() {
         this.is3DMode = !this.is3DMode; // 상태 반전
         if (this.currentAdapter && typeof this.currentAdapter.set3DMode === 'function') {
             this.currentAdapter.set3DMode(this.is3DMode);
+        }
+    },
+
+    // 서버에서 시뮬레이션 데이터를 가져와 3D 플로우 맵을 그리라고 지시
+    showSimulationFlow: function(jsonString, layerType) {
+        try {
+            const data = JSON.parse(jsonString);
+            if (data && data.length > 0) {
+                if (this.currentAdapter && typeof this.currentAdapter.showSimulationFlow === 'function') {
+                    this.currentAdapter.showSimulationFlow(data, layerType);
+                }
+            } else {
+                alert("시뮬레이션 데이터가 없습니다.");
+            }
+        } catch (e) {
+            console.error("플로우 맵 데이터 파싱 에러:", e);
+        }
+    },
+
+    setAnimationPause: function(paused) {
+        try {
+            if (this.currentAdapter && typeof this.currentAdapter.setAnimationPause === 'function') {
+                this.currentAdapter.setAnimationPause(paused);
+            }
+        } catch (e) {
+            console.error("플로우 맵 데이터 파싱 에러:", e);
         }
     }
 };

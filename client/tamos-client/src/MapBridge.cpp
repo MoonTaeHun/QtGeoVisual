@@ -43,6 +43,11 @@ void MapBridge::resetSimulation()
     emit requestResetSimulation();
 }
 
+void MapBridge::requestSimFlowData()
+{
+    emit requestAllSimulationData();
+}
+
 void MapBridge::generateHeatmap()
 {
     emit requestGenerateHeatmapData();

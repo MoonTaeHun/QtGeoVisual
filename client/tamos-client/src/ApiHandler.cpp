@@ -46,6 +46,27 @@ void ApiHandler::requestDroneData() {
     });
 }
 
+void ApiHandler::requestAllSimulationData()
+{
+    //QUrl url("http://DESKTOP-A3T49SK:8080/api/sim/od-data");
+    QUrl url("http://DESKTOP-A3T49SK:8080/api/sim/real-od");
+    QNetworkReply* reply = networkManager->get(QNetworkRequest(url));
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        if (reply->error() == QNetworkReply::NoError)
+        {
+            QString jsonData = QString::fromUtf8(reply->readAll());
+            qDebug() << "전체 시뮬레이션 데이터 수신 성공!";
+            emit allSimulationDataFetched(jsonData);
+        }
+        else
+        {
+            qDebug() << "전체 시뮬레이션 데이터 수신 실패:" << reply->errorString();
+        }
+        reply->deleteLater();
+    });
+}
+
 void ApiHandler::onReplyFinished(QNetworkReply *reply)
 {
     if(reply->error() == QNetworkReply::NoError)

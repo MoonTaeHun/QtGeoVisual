@@ -15,6 +15,7 @@ public:
     Q_INVOKABLE void simulateDroneMove();
     Q_INVOKABLE void startSimulation();
     Q_INVOKABLE void resetSimulation();
+    Q_INVOKABLE void requestSimFlowData();
 
     // 히트맵 기능 테스트
     Q_INVOKABLE void generateHeatmap();
@@ -29,13 +30,19 @@ public:
     Q_INVOKABLE void reportGeoJsonKeys(const QStringList& keys);
 
 signals:
-    // QML로 보낼 신호: "이 ID를 가진 드론을 (lat, lng)으로 이동시켜라"
+    // 시뮬레이션 기능
     void requestStartSimulation();
     void requestResetSimulation();
     void updateMarker(QString id, double lat, double lng, QString type);
+    void requestAllSimulationData();
+    void simFlowDataReady(const QString& jsonData);
+
+    // 히트맵 기능
     void requestGenerateHeatmapData();
     void requestHeatmapData();
     void heatmapDataReady(const QString& jsonData);
+
+    // 사용자 데이터 표출 기능 테스트
     void requestTextInput(double lat, double lng);   //지정된 좌표에 대해 텍스트 입력을 요청하는 시그널
     void geoJsonKeysReady(const QStringList& keys);
 

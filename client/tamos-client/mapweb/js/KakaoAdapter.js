@@ -425,4 +425,12 @@ class KakaoAdapter extends MapAdapter {
             console.error("카카오맵 렌더링 에러 발생:", e);
         }
     }
+
+    showSimulationFlow(simData, layerType) {
+        alert("3D 플로우 맵(deck.gl) 기능은 맵박스(Mapbox) 엔진에서만 지원됩니다.\nMapbox로 스위칭 후 사용해주세요.");
+    }
+
+    setAnimationPause(paused) { 
+        alert("3D 플로우 맵(deck.gl) 기능은 맵박스(Mapbox) 엔진에서만 지원됩니다.\nMapbox로 스위칭 후 사용해주세요.");
+    }
 }

@@ -63,10 +63,16 @@ int main(int argc, char *argv[])
                      apiHandler, SLOT(startServerSimulation()));
     QObject::connect(mapBridge, SIGNAL(requestResetSimulation()),
                      apiHandler, SLOT(resetServerSimulationData()));
+    QObject::connect(mapBridge, SIGNAL(requestAllSimulationData()),
+                     apiHandler, SLOT(requestAllSimulationData()));
+    QObject::connect(apiHandler, &ApiHandler::allSimulationDataFetched,
+                     mapBridge, &MapBridge::simFlowDataReady);
+
     QObject::connect(mapBridge, SIGNAL(requestGenerateHeatmapData()),
                      apiHandler, SLOT(requestGenerateHeatmapData()));
     QObject::connect(mapBridge, SIGNAL(requestHeatmapData()),
                      apiHandler, SLOT(requestHeatmapData()));
+
     QObject::connect(apiHandler, &ApiHandler::droneDataReceived,
                      mapBridge, &MapBridge::updateMarker);
     QObject::connect(apiHandler, &ApiHandler::heatmapDataFetched,

@@ -21,6 +21,18 @@ ApplicationWindow {
             mapContainer.runJavaScript("mapManager.updateMarker('" + id + "', " + lat + ", " + lng + ", '" + type + "');");
         }
 
+        function onSimFlowDataReady(jsonData) {
+            // 콤보박스 선택 인덱스에 따라 전달할 레이어 타입 문자열 결정
+            var layerType = "None";
+            if (layerSelector.currentIndex === 1) layerType = "TripsLayer";
+            else if (layerSelector.currentIndex === 2) layerType = "ArcLayer";
+            else if (layerSelector.currentIndex === 3) layerType = "PathLayer";
+
+            // JS 함수 호출 시 데이터(jsonData)와 레이어 타입(layerType)을 함께 전달
+            var jsCommand = "mapManager.showSimulationFlow(`" + jsonData + "`, '" + layerType + "');"
+            mapContainer.runJavaScript(jsCommand)
+        }
+
         function onHeatmapDataReady(jsonData) {
             mapContainer.runJavaScript("mapManager.drawHeatmap(`" + jsonData + "`);")
         }
@@ -72,7 +84,7 @@ ApplicationWindow {
             backgroundColor: "transparent"
 
             // 로컬 웹지도 서버 연결
-            url: "http://127.0.0.1:5500/index.html"
+            url: "http://DESKTOP-A3T49SK:5500/index.html"
             webChannel: qmlWebChannel
 
             onLoadingChanged: function(loadRequest) {
@@ -167,15 +179,31 @@ ApplicationWindow {
 
                 Button {
                     text: "GeoJSON 로드"
-                    onClicked: {
-                        importDialog.open()
-                    }
+                    onClicked: importDialog.open()
                 }
 
                 Button {
                     text: "3D 뷰어 (Mapbox)"
-                    onClicked: {
-                        mapContainer.runJavaScript("mapManager.toggle3D();")
+                    onClicked: mapContainer.runJavaScript("mapManager.toggle3D();")
+                }
+
+                ComboBox {
+                    id: layerSelector
+                    // 3가지 시각화 옵션 제공
+                    model: ["None", "TripsLayer (애니메이션)", "ArcLayer (기점-종점)", "PathLayer (전체 경로)"]
+                    font.pixelSize: 14
+
+                    onCurrentIndexChanged: {
+                        mapBridge.requestSimFlowData()
+                    }
+                }
+
+                CheckBox {
+                    id: pauseCheck
+                    text: "일시정지"
+                    onCheckedChanged: {
+                        // JS로 정지 상태 전달
+                        mapContainer.runJavaScript("mapManager.setAnimationPause(" + checked + ");")
                     }
                 }
             }

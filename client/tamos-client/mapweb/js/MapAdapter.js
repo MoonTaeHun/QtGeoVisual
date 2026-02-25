@@ -22,4 +22,8 @@ class MapAdapter {
 
     set3DMode(enable) { throw new Error("Not implemented"); }
     render3DGeoJson(geojsonData, heightKey)  { throw new Error("Not implemented"); }
+    
+    //Mapbox Plug-in
+    showSimulationFlow(simData, layerType) { throw new Error("Not implemented"); }
+    setAnimationPause(paused) { throw new Error("Not implemented"); }
 }
