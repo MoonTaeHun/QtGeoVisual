@@ -35,17 +35,14 @@ tamos/
     └── tamos-client/
         ├── main.cpp
         ├── CMakeLists.txt
+		├── sample/                    	# Sample 파일(geojson)
         ├── src/                    	# C++ Bridge (Table Model)
-        ├── qml/
-        │   └── main.qml            	# 전체 레이아웃 (Map + Table)
+        ├── qml/                        # GUI
         └── mapweb/                 	# Map Assets (JS/HTML)
             ├── index.html          	# 지도 진입점
-            ├── js/
-            │   ├── map_adapter.js  	# 공통 지도 인터페이스
-            │   ├── engine_mapbox.js 	# Mapbox 전용 구현
-            │   └── animation.js    	# 객체 이동 애니메이션 로직
+            ├── assets/
+			├── js/
             └── css/
-                └── style.css
 
 ```
 cpp, qt6, qml, mapbox-gl, opengl, rendering
