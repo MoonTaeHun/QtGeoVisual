@@ -13,6 +13,7 @@ ApplicationWindow {
 
     property real currentMarkerLat: 0.0
     property real currentMarkerLng: 0.0
+    property string currentMap: "MapBox"
 
     Connections {
         target: mapBridge
@@ -102,6 +103,7 @@ ApplicationWindow {
             color: "#444"
 
             RowLayout {
+                /*
                 Button {
                     text: "Simulation Start"
                     onClicked: {
@@ -115,11 +117,13 @@ ApplicationWindow {
                         mapBridge.resetSimulation()
                     }
                 }
+                */
 
                 Button {
                     text: "MapBox"
                     onClicked: {
                         mapContainer.runJavaScript("mapManager.switchEngine('mapbox');")
+                        currentMap = text
                     }
                 }
 
@@ -127,6 +131,7 @@ ApplicationWindow {
                     text: "KakaoMap"
                     onClicked: {
                         mapContainer.runJavaScript("mapManager.switchEngine('kakao');")
+                        currentMap = text
                     }
                 }
 
@@ -192,6 +197,8 @@ ApplicationWindow {
                     // 3가지 시각화 옵션 제공
                     model: ["None", "TripsLayer (애니메이션)", "ArcLayer (기점-종점)", "PathLayer (전체 경로)"]
                     font.pixelSize: 14
+                    enabled: currentMap === "MapBox"
+                    opacity: enabled ? 1.0 : 0.7
 
                     onCurrentIndexChanged: {
                         mapBridge.requestSimFlowData()
@@ -201,6 +208,9 @@ ApplicationWindow {
                 CheckBox {
                     id: pauseCheck
                     text: "일시정지"
+                    enabled: currentMap === "MapBox" && layerSelector.currentIndex === 1
+                    opacity: enabled ? 1.0 : 0.7
+
                     onCheckedChanged: {
                         // JS로 정지 상태 전달
                         mapContainer.runJavaScript("mapManager.setAnimationPause(" + checked + ");")
