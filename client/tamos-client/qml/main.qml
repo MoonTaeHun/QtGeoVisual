@@ -216,6 +216,29 @@ ApplicationWindow {
                         mapContainer.runJavaScript("mapManager.setAnimationPause(" + checked + ");")
                     }
                 }
+
+                Button {
+                    text: "서비스 권역 그리드 생성"
+                    onClicked: {
+                        // 사용자가 정의한 임의의 다각형 좌표 (예: 삼각형/다각형)
+                        var customPolygon = [[
+                            [127.02, 37.49], [127.05, 37.50], [127.04, 37.52],
+                            [127.01, 37.51], [127.02, 37.49] // 마지막은 시작점과 같아야 함
+                        ]];
+
+                        var jsCommand = "mapManager.currentAdapter.createGridInPolygon(" +
+                                        JSON.stringify(customPolygon) + ", 0.03, 'hex');"
+                        mapContainer.runJavaScript(jsCommand)
+                    }
+                }
+
+                Button {
+                    text: "수요 밀집 지역 그룹핑"
+                    onClicked: {
+                        // 'grid-source'에 있는 격자들을 머지 조건에 따라 합침
+                        mapContainer.runJavaScript("mapManager.mergeGridByCondition('grid-source');")
+                    }
+                }
             }
         }
 

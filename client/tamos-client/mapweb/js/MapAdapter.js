@@ -26,4 +26,7 @@ class MapAdapter {
     //Mapbox Plug-in
     showSimulationFlow(simData, layerType) { throw new Error("Not implemented"); }
     setAnimationPause(paused) { throw new Error("Not implemented"); }
+
+    createGridInPolygon(polygonCoords, cellSize, type = 'hex') { throw new Error("Not implemented"); }
+    mergeGridByCondition(sourceId) { throw new Error("Not implemented"); }
 }

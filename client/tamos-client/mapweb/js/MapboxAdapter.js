@@ -757,4 +757,234 @@ class MapboxAdapter extends MapAdapter {
     setAnimationPause(paused) {
         this.isPaused = paused;
     }
+
+    // [추가] 임의의 폴리곤 영역을 그리드로 채우는 함수
+    createGridInPolygon(polygonCoords, cellSize, type = 'hex') {
+        if (!this.map) return;
+
+        // 1. 입력받은 좌표로 Turf 폴리곤 객체 생성
+        // polygonCoords 형태: [[ [lng, lat], [lng, lat], ... ]]
+        const maskPolygon = turf.polygon(polygonCoords);
+
+        // 2. 폴리곤의 Bounding Box 계산 (그리드를 생성할 전체 범위)
+        const bbox = turf.bbox(maskPolygon);
+
+        // 3. BBox 범위에 일단 전체 그리드 생성
+        const options = { units: 'kilometers' };
+        let fullGrid;
+        if (type === 'hex') {
+            fullGrid = turf.hexGrid(bbox, cellSize, options);
+        } else {
+            fullGrid = turf.squareGrid(bbox, cellSize, options);
+        }
+
+        // 4. 🔥 핵심: 폴리곤 영역 내부에 있는 셀만 필터링 (Intersect 연산)
+        const clippedFeatures = fullGrid.features.map(cell => {
+            // 각 그리드 셀과 입력 폴리곤의 교집합 계산
+            const intersection = turf.intersect(cell, maskPolygon);
+            if (intersection) {
+                // 원래 셀의 속성을 유지하면서 교차된 모양으로 업데이트
+                intersection.properties = {
+                    ...cell.properties,
+                    demandValue: Math.random() * 100, // 초기 수요 값 (랜덤)
+                    isFullCell: turf.area(intersection) / turf.area(cell) > 0.9 // 영역 보존율 체크
+                };
+                return intersection;
+            }
+            return null;
+        }).filter(f => f !== null);
+
+        const finalGrid = turf.featureCollection(clippedFeatures);
+
+        // 5. Mapbox 레이어 업데이트
+        this.updateMapSource('grid-source', finalGrid);
+        this.addGridLayer('grid-layer', 'grid-source');
+
+        console.log(`폴리곤 내 ${type} 그리드 생성 완료: ${clippedFeatures.length}개 셀`);
+    }
+
+    // 소스 업데이트 유틸리티
+    updateMapSource(sourceId, data) {
+        if (this.map.getSource(sourceId)) {
+            // 이미 소스가 존재하면 데이터만 싹 갈아끼웁니다 (성능에 훨씬 좋음)
+            this.map.getSource(sourceId).setData(data);
+        } else {
+            // 소스가 처음 만들어지는 경우라면 새로 등록합니다
+            this.map.addSource(sourceId, { 
+                type: 'geojson', 
+                data: data,
+                generateId: true // 클릭 하이라이트(feature-state)를 위해 꼭 필요함
+            });
+        }
+    }
+
+    // 레이어 스타일 설정
+    addGridLayer(layerId, sourceId) {
+        if (this.map.getLayer(layerId)) return;
+
+        this.map.addLayer({
+            id: layerId,
+            type: 'fill',
+            source: sourceId,
+            paint: {
+                'fill-color': [
+                    'case',
+                    ['boolean', ['feature-state', 'clicked'], false],
+                    '#ffeb3b', // 🔥 클릭된 셀은 노란색으로 하이라이트
+                    [
+                        'interpolate',
+                        ['linear'],
+                        ['get', 'demandValue'],
+                        0, '#eff3ff',
+                        100, '#084594'
+                    ]
+                ],
+                'fill-opacity': [
+                    'case',
+                    ['boolean', ['feature-state', 'clicked'], false],
+                    0.9,
+                    0.6
+                ],
+                'fill-outline-color': 'white'
+            }
+        });
+
+        // 클릭 이벤트 등록
+        this.map.on('click', layerId, (e) => {
+            if (e.features.length > 0) {
+                const feature = e.features[0];
+                const props = feature.properties;
+                
+                // 1. 기존 선택 해제 및 새로운 셀 하이라이트 (Feature State 이용)
+                if (this.lastSelectedCellId !== undefined) {
+                    this.map.setFeatureState(
+                        { source: sourceId, id: this.lastSelectedCellId },
+                        { clicked: false }
+                    );
+                }
+                this.lastSelectedCellId = feature.id;
+                this.map.setFeatureState(
+                    { source: sourceId, id: feature.id },
+                    { clicked: true }
+                );
+
+                // 2. 팝업 표시
+                new mapboxgl.Popup()
+                    .setLngLat(e.lngLat)
+                    .setHTML(`
+                        <div style="color: #333; padding: 5px;">
+                            <strong style="font-size: 14px;">📊 구역 수요 분석</strong><br/>
+                            <hr style="margin: 5px 0;"/>
+                            ID: <code>${props.cellId}</code><br/>
+                            <b>예측 수요: ${parseFloat(props.demandValue).toFixed(2)}</b><br/>
+                            상태: ${props.demandValue > 50 ? '⚠️ 혼잡 예상' : '✅ 원활'}
+                        </div>
+                    `)
+                    .addTo(this.map);
+                
+                // 3. 필요 시 QML로 데이터 전달 (상세 그래프 표출용)
+                console.log(`Cell Clicked: ${props.cellId}, Value: ${props.demandValue}`);
+            }
+        });
+
+        // 마우스 커서 변경 (포인터)
+        this.map.on('mouseenter', layerId, () => { this.map.getCanvas().style.cursor = 'pointer'; });
+        this.map.on('mouseleave', layerId, () => { this.map.getCanvas().style.cursor = ''; });
+    }
+
+    // [추가] 특정 조건에 맞는 격자들을 머지하는 함수
+    // [수정] 특정 조건에 맞는 격자들을 머지하는 함수
+    mergeGridByCondition(sourceId) {
+        const source = this.map.getSource(sourceId);
+        if (!source || !source._data) return;
+
+        const gridData = JSON.parse(JSON.stringify(source._data));
+        const values = gridData.features.map(f => f.properties.demandValue).filter(v => v != null);
+        if (values.length === 0) return;
+
+        const max = Math.max(...values);
+        const min = Math.min(...values);
+        const range = max - min;
+
+        // 1. 모든 격자에 레벨 부여 및 레벨별 그룹화
+        const bins = {}; 
+        gridData.features.forEach(f => {
+            const val = f.properties.demandValue || 0;
+            //const level = range > 0 ? Math.floor(((val - min) / range) * 8) : 0;
+            const level = (val > 50) ? 1 : 0;
+            f.properties.level = level;
+            
+            if (!bins[level]) bins[level] = [];
+            bins[level].push(f);
+        });
+
+        // 2. 레벨별로 루프를 돌며 각각 머지 수행
+        let mergedFeatures = [];
+        Object.keys(bins).forEach(level => {
+            const featuresInLevel = bins[level];
+            if (featuresInLevel.length === 0) return;
+
+            // 해당 레벨의 첫 번째 피처를 시작점으로 설정
+            let unioned = featuresInLevel[0];
+            
+            // 나머지 피처들을 하나씩 합침 (turf.union)
+            for (let i = 1; i < featuresInLevel.length; i++) {
+                try {
+                    unioned = turf.union(unioned, featuresInLevel[i]);
+                } catch (e) {
+                    console.error("머지 중 오류 발생:", e);
+                }
+            }
+
+            if (unioned) {
+                unioned.properties = { level: parseInt(level), displayScore: parseInt(level) };
+                mergedFeatures.push(unioned);
+            }
+        });
+
+        // 3. MultiPolygon이 섞여 있을 수 있으므로 개별 폴리곤으로 분리 (Flatten)
+        const finalCollection = turf.flatten(turf.featureCollection(mergedFeatures));
+
+        this.updateMapSource('merged-zone-source', finalCollection);
+        this.addMergedLayer('merged-zone-layer', 'merged-zone-source');
+        
+        console.log(`구역 머지 완료: 생성된 독립 구역 ${finalCollection.features.length}개`);
+    }
+
+    // [수정] 머지된 레이어를 위한 전용 스타일
+    addMergedLayer(layerId, sourceId) {
+        const outlineId = layerId + '-outline';
+
+        // 🔥 중요: 두 레이어 모두 안전하게 제거 후 다시 생성
+        if (this.map.getLayer(layerId)) this.map.removeLayer(layerId);
+        if (this.map.getLayer(outlineId)) this.map.removeLayer(outlineId);
+
+        // 메인 채우기 레이어
+        this.map.addLayer({
+            id: layerId,
+            type: 'fill',
+            source: sourceId,
+            paint: {
+                'fill-color': [
+                    'interpolate', ['linear'], ['get', 'displayScore'],
+                    0, '#ebfc07',  // 아주 낮은 레벨
+                    1, '#f50606',  // 중간 레벨
+                ],
+                'fill-opacity': 0.7,
+                'fill-outline-color': '#ffffff' // 1px 선은 유지 (구분감)
+            }
+        });
+
+        // 외곽선 강조 레이어
+        this.map.addLayer({
+            id: outlineId,
+            type: 'line',
+            source: sourceId,
+            paint: {
+                'line-color': '#2c3e50',
+                'line-width': 1.5,
+                'line-opacity': 0.4
+            }
+        });
+    }
 }

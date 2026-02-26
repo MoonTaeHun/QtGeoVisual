@@ -287,5 +287,25 @@ window.mapManager = {
         } catch (e) {
             console.error("플로우 맵 데이터 파싱 에러:", e);
         }
+    },
+
+    createGridInPolygon(polygonCoords, cellSize, type = 'hex') {
+        try {
+            if (this.currentAdapter && typeof this.currentAdapter.createGridInPolygon === 'function') {
+                this.currentAdapter.createGridInPolygon(polygonCoords, cellSize, type);
+            }
+        } catch (e) {
+            console.error("그리드 맵 데이터 파싱 에러:", e);
+        }
+    },
+
+    mergeGridByCondition(sourceId) {
+        try {
+            if (this.currentAdapter && typeof this.currentAdapter.mergeGridByCondition === 'function') {
+                this.currentAdapter.mergeGridByCondition(sourceId);
+            }
+        } catch (e) {
+            console.error("그리드 맵 데이터 파싱 에러:", e);
+        }
     }
 };

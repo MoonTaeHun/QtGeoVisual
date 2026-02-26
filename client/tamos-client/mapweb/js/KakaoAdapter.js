@@ -427,10 +427,18 @@ class KakaoAdapter extends MapAdapter {
     }
 
     showSimulationFlow(simData, layerType) {
-        alert("3D 플로우 맵(deck.gl) 기능은 맵박스(Mapbox) 엔진에서만 지원됩니다.\nMapbox로 스위칭 후 사용해주세요.");
+        alert("이 기능은 맵박스(Mapbox) 엔진에서만 지원됩니다.\nMapbox로 스위칭 후 사용해주세요.");
     }
 
     setAnimationPause(paused) { 
-        alert("3D 플로우 맵(deck.gl) 기능은 맵박스(Mapbox) 엔진에서만 지원됩니다.\nMapbox로 스위칭 후 사용해주세요.");
+        alert("이 기능은 맵박스(Mapbox) 엔진에서만 지원됩니다.\nMapbox로 스위칭 후 사용해주세요.");
+    }
+
+    createGridInPolygon(polygonCoords, cellSize, type = 'hex') { 
+        alert("이 기능은 맵박스(Mapbox) 엔진에서만 지원됩니다.\nMapbox로 스위칭 후 사용해주세요.");
+    }
+
+    mergeGridByCondition(sourceId) { 
+        alert("이 기능은 맵박스(Mapbox) 엔진에서만 지원됩니다.\nMapbox로 스위칭 후 사용해주세요."); 
     }
 }
