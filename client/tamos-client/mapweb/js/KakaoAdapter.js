@@ -438,7 +438,7 @@ class KakaoAdapter extends MapAdapter {
         alert("이 기능은 맵박스(Mapbox) 엔진에서만 지원됩니다.\nMapbox로 스위칭 후 사용해주세요.");
     }
 
-    mergeGridByCondition(sourceId) { 
+    async mergeGridByConditionAsync(sourceId) { 
         alert("이 기능은 맵박스(Mapbox) 엔진에서만 지원됩니다.\nMapbox로 스위칭 후 사용해주세요."); 
     }
 }

@@ -299,10 +299,10 @@ window.mapManager = {
         }
     },
 
-    mergeGridByCondition(sourceId) {
+    async mergeGridByConditionAsync(sourceId) {
         try {
-            if (this.currentAdapter && typeof this.currentAdapter.mergeGridByCondition === 'function') {
-                this.currentAdapter.mergeGridByCondition(sourceId);
+            if (this.currentAdapter && typeof this.currentAdapter.mergeGridByConditionAsync === 'function') {
+                this.currentAdapter.mergeGridByConditionAsync(sourceId);
             }
         } catch (e) {
             console.error("그리드 맵 데이터 파싱 에러:", e);

@@ -28,5 +28,5 @@ class MapAdapter {
     setAnimationPause(paused) { throw new Error("Not implemented"); }
 
     createGridInPolygon(polygonCoords, cellSize, type = 'hex') { throw new Error("Not implemented"); }
-    mergeGridByCondition(sourceId) { throw new Error("Not implemented"); }
+    async mergeGridByConditionAsync(sourceId) { throw new Error("Not implemented"); }
 }

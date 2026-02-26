@@ -894,7 +894,7 @@ class MapboxAdapter extends MapAdapter {
 
     // [추가] 특정 조건에 맞는 격자들을 머지하는 함수
     // [수정] 특정 조건에 맞는 격자들을 머지하는 함수
-    mergeGridByCondition(sourceId) {
+    async mergeGridByConditionAsync(sourceId) {
         const source = this.map.getSource(sourceId);
         if (!source || !source._data) return;
 
@@ -906,31 +906,41 @@ class MapboxAdapter extends MapAdapter {
         const min = Math.min(...values);
         const range = max - min;
 
-        // 1. 모든 격자에 레벨 부여 및 레벨별 그룹화
+        const cleanGridData = turf.truncate(gridData, { precision: 6, coordinates: 2 });
+
+        // 1. 레벨별 그룹화 (이 연산은 가벼우므로 동기 처리)
         const bins = {}; 
-        gridData.features.forEach(f => {
+        cleanGridData.features.forEach(f => {
             const val = f.properties.demandValue || 0;
-            //const level = range > 0 ? Math.floor(((val - min) / range) * 8) : 0;
-            const level = (val > 50) ? 1 : 0;
+            const level = range > 0 ? Math.floor(((val - min) / range) * 5) : 0;
             f.properties.level = level;
             
             if (!bins[level]) bins[level] = [];
             bins[level].push(f);
         });
 
-        // 2. 레벨별로 루프를 돌며 각각 머지 수행
-        let mergedFeatures = [];
-        Object.keys(bins).forEach(level => {
-            const featuresInLevel = bins[level];
-            if (featuresInLevel.length === 0) return;
+        // 🔥 메인 스레드에 휴식을 주는 헬퍼 함수 (0ms 대기 후 실행 제어권 반환)
+        const yieldToMain = () => new Promise(resolve => setTimeout(resolve, 0));
 
-            // 해당 레벨의 첫 번째 피처를 시작점으로 설정
+        let mergedFeatures = [];
+        const levels = Object.keys(bins);
+
+        // 2. 비동기 루프 (forEach 대신 for...of 사용 필수)
+        for (const level of levels) {
+            const featuresInLevel = bins[level];
+            if (featuresInLevel.length === 0) continue;
+
             let unioned = featuresInLevel[0];
             
-            // 나머지 피처들을 하나씩 합침 (turf.union)
             for (let i = 1; i < featuresInLevel.length; i++) {
                 try {
                     unioned = turf.union(unioned, featuresInLevel[i]);
+                    
+                    // 🔥 핵심: 50번 연산할 때마다 메인 스레드에 렌더링 기회 양보
+                    // 셀이 수만 개라도 UI가 얼어붙지 않고 부드럽게 유지됩니다.
+                    if (i % 50 === 0) {
+                        await yieldToMain();
+                    }
                 } catch (e) {
                     console.error("머지 중 오류 발생:", e);
                 }
@@ -940,24 +950,21 @@ class MapboxAdapter extends MapAdapter {
                 unioned.properties = { level: parseInt(level), displayScore: parseInt(level) };
                 mergedFeatures.push(unioned);
             }
-        });
+        }
 
-        // 3. MultiPolygon이 섞여 있을 수 있으므로 개별 폴리곤으로 분리 (Flatten)
+        // 3. 최종 데이터 분리 및 렌더링
         const finalCollection = turf.flatten(turf.featureCollection(mergedFeatures));
 
         this.updateMapSource('merged-zone-source', finalCollection);
         this.addMergedLayer('merged-zone-layer', 'merged-zone-source');
         
-        console.log(`구역 머지 완료: 생성된 독립 구역 ${finalCollection.features.length}개`);
+        console.log(`[비동기] 구역 머지 완료: 생성된 독립 구역 ${finalCollection.features.length}개`);
     }
 
     // [수정] 머지된 레이어를 위한 전용 스타일
     addMergedLayer(layerId, sourceId) {
-        const outlineId = layerId + '-outline';
-
         // 🔥 중요: 두 레이어 모두 안전하게 제거 후 다시 생성
         if (this.map.getLayer(layerId)) this.map.removeLayer(layerId);
-        if (this.map.getLayer(outlineId)) this.map.removeLayer(outlineId);
 
         // 메인 채우기 레이어
         this.map.addLayer({
@@ -968,22 +975,10 @@ class MapboxAdapter extends MapAdapter {
                 'fill-color': [
                     'interpolate', ['linear'], ['get', 'displayScore'],
                     0, '#ebfc07',  // 아주 낮은 레벨
-                    1, '#f50606',  // 중간 레벨
+                    5, '#f50606',  // 중간 레벨
                 ],
                 'fill-opacity': 0.7,
                 'fill-outline-color': '#ffffff' // 1px 선은 유지 (구분감)
-            }
-        });
-
-        // 외곽선 강조 레이어
-        this.map.addLayer({
-            id: outlineId,
-            type: 'line',
-            source: sourceId,
-            paint: {
-                'line-color': '#2c3e50',
-                'line-width': 1.5,
-                'line-opacity': 0.4
             }
         });
     }

@@ -236,7 +236,18 @@ ApplicationWindow {
                     text: "수요 밀집 지역 그룹핑"
                     onClicked: {
                         // 'grid-source'에 있는 격자들을 머지 조건에 따라 합침
-                        mapContainer.runJavaScript("mapManager.mergeGridByCondition('grid-source');")
+                        console.log("머지 연산 시작...");
+
+                        // 2. JS의 비동기 함수 호출 (완료 시 then()으로 콜백 받기)
+                        var jsCommand = "
+                            mapManager.currentAdapter.mergeGridByConditionAsync('grid-source')
+                            .then(() => {
+                                // 이 블록은 JS 연산이 완전히 끝난 후 실행됩니다.
+                                console.log('JS 연산 완료 신호 QML로 전달');
+                                // 필요하다면 C++ 브릿지를 통해 QML에 완료 시그널 전송
+                            });
+                        ";
+                        mapContainer.runJavaScript(jsCommand);
                     }
                 }
             }
